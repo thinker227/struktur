@@ -1,6 +1,6 @@
-use std::{collections::VecDeque, fmt::Display, ops::{Add, ControlFlow, FromResidual, Try}};
+use std::{fmt::Display, ops::{Add, ControlFlow, FromResidual, Try}};
 
-use crate::{parse::{IndentationHint, ParseError}, text_span::TextSpan};
+use crate::{parse::ParseError, text_span::TextSpan};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Token<'src> {
@@ -41,9 +41,6 @@ pub enum TokenKind {
     Name,
     Number,
     _String,
-    Newline,
-    EnterBlock,
-    ExitBlock,
     EndOfInput,
 }
 
@@ -67,9 +64,6 @@ impl TokenKind {
             Name => None,
             Number => None,
             _String => None,
-            Newline => None,
-            EnterBlock => None,
-            ExitBlock => None,
             EndOfInput => None,
         }
     }
@@ -80,9 +74,6 @@ impl TokenKind {
             Name => "name",
             Number => "number",
             _String => "string",
-            Newline => "newline",
-            EnterBlock => "enter block",
-            ExitBlock => "exit block",
             EndOfInput => "end of input",
 
             _ => self.static_source().unwrap()
@@ -171,22 +162,10 @@ struct PartialToken {
     chars: usize,
 }
 
-enum BlockOp {
-    Enter,
-    Exit { levels: usize },
-    Empty,
-}
-
-struct Block {
-    size: StrLen,
-    origin: TextSpan,
-}
-
 struct Lexer<'src> {
     source: &'src str,
     offset: usize,
     at_start: bool,
-    blocks: VecDeque<Block>,
     tokens: Vec<Token<'src>>,
 }
 
@@ -196,7 +175,6 @@ impl<'src> Lexer<'src> {
             source,
             offset: 0,
             at_start: true,
-            blocks: VecDeque::new(),
             tokens: Vec::new()
         }
     }
@@ -215,7 +193,7 @@ impl<'src> Lexer<'src> {
     }
 
     fn consume_bytes(&mut self, bytes: usize) -> LexResult<&str> {
-        if bytes >= self.source.len() {
+        if bytes > self.source.len() {
             return LexResult::Eoi;
         }
 
@@ -224,11 +202,6 @@ impl<'src> Lexer<'src> {
         self.offset += bytes;
 
         LexResult::Ok(text)
-    }
-
-    fn consume_chars(&mut self, chars: usize) -> LexResult<&str> {
-        let bytes = LexResult::from(self.byte_length_of_chars(chars))?;
-        self.consume_bytes(bytes)
     }
 
     fn peek(&self, chars: usize) -> Option<&str> {
@@ -256,25 +229,9 @@ impl<'src> Lexer<'src> {
     }
 
     fn consume_whitespace(&mut self) -> LexResult<StrLen> {
-        let len = self.leading(is_whitespace_not_newline);
+        let len = self.leading(is_whitespace);
         self.consume_bytes(len.bytes)?;
         LexResult::Ok(len)
-    }
-
-    fn construct_token(&self, token: PartialToken) -> LexResult<Token<'src>> {
-        let PartialToken { kind, chars } = token;
-
-        let bytes = LexResult::from(self.byte_length_of_chars(chars))?;
-        let from = self.offset;
-        let text = &self.source[..bytes];
-
-        let token = Token {
-            kind,
-            text,
-            span: TextSpan::new(from, bytes)
-        };
-
-        LexResult::Ok(token)
     }
 
     fn push_token(&mut self, token: PartialToken) -> LexResult<()> {
@@ -295,25 +252,10 @@ impl<'src> Lexer<'src> {
         LexResult::Ok(())
     }
 
-    pub fn consume_blocks(&mut self) {
-        while self.blocks.pop_back().is_some() {
-            let token = Token {
-                kind: TokenKind::ExitBlock,
-                text: "",
-                span: TextSpan::empty(self.offset),
-            };
-            self.tokens.push(token);
-        }
-    }
-
     pub fn lex_token(&mut self) -> LexResult<()> {
         let current = LexResult::from(self.current())?;
 
-        if self.newline_indentation()? {
-            return LexResult::Ok(());
-        }
-
-        if is_whitespace_not_newline(current) {
+        if is_whitespace(current) {
             _ = self.consume_whitespace();
             return LexResult::Ok(());
         }
@@ -337,118 +279,6 @@ impl<'src> Lexer<'src> {
         LexResult::Err(ParseError::UnknownCharacter {
             char_span: TextSpan::new(self.offset, current.len_utf8())
         })
-    }
-
-    fn newline_indentation(&mut self) -> LexResult<bool> {
-        let newline = if self.at_start {
-            None
-        }
-        else if LexResult::from(self.current())? == '\n' {
-            let newline = self.construct_token(PartialToken { kind: TokenKind::Newline, chars: 1 })?;
-            self.consume_chars(1)?;
-            Some(newline)
-        }
-        else {
-            return LexResult::Ok(false);
-        };
-
-        if let Some((op, len@StrLen { chars, bytes })) = self.indentation()? {
-            match op {
-                BlockOp::Enter => {
-                    self.blocks.push_back(Block {
-                        size: len,
-                        origin: TextSpan::new(self.offset, bytes)
-                    });
-                    self.push_token(PartialToken {
-                        chars,
-                        kind: TokenKind::EnterBlock
-                    })?;
-                }
-                BlockOp::Exit { levels } => {
-                    for _ in 0..levels {
-                        self.blocks.pop_back().unwrap();
-
-                        let token = self.construct_token(PartialToken {
-                            chars,
-                            kind: TokenKind::ExitBlock
-                        })?;
-                        self.tokens.push(token);
-                    }
-                }
-                BlockOp::Empty => {
-                    if let Some(newline) = newline {
-                        self.tokens.push(newline);
-                    }
-
-                    self.consume_bytes(bytes)?;
-                }
-            }
-
-            LexResult::Ok(true)
-        } else {
-            LexResult::Ok(false)
-        }
-    }
-
-    fn indentation(&self) -> LexResult<Option<(BlockOp, StrLen)>> {
-        let mut newline = false;
-        let whitespace_len = self.leading(|c| {
-            if c == '\n' {
-                newline = true;
-                true
-            } else {
-                is_whitespace(c) && !newline
-            }
-        });
-
-        if newline {
-            return LexResult::Ok(Some((BlockOp::Empty, whitespace_len)));
-        }
-
-        let whitespace_str = &self.source[..whitespace_len.bytes];
-
-        for (byte_offset, c) in whitespace_str.char_indices() {
-            if c != ' ' {
-                return LexResult::Err(ParseError::IllegalIndentation {
-                    char_span: TextSpan::new(self.offset, byte_offset + c.len_utf8())
-                });
-            }
-        }
-
-        let mut size = 0;
-        for (block_index, block) in self.blocks.iter().enumerate() {
-            if whitespace_len.chars == size {
-                // Indentation is equal to that of another smaller block level,
-                // meaning that the indentation has decreased.
-                let remaining = self.blocks.len() - block_index;
-                return LexResult::Ok(Some((BlockOp::Exit { levels: remaining }, whitespace_len)));
-            }
-
-            let new_size = block.size.chars;
-            if whitespace_len.chars < new_size {
-                // Indentation is greater than the previous block level but less than the new one,
-                // meaning that we have inconsistent indentation.
-                return LexResult::Err(ParseError::InconsistentIndentation {
-                    indentation: whitespace_len.chars,
-                    indent_span: TextSpan::new(self.offset, whitespace_len.bytes),
-                    blocks: self.blocks.iter()
-                        .map(|block| IndentationHint {
-                            indentation: block.size.chars,
-                            span: block.origin
-                        }).collect()
-                });
-            }
-
-            size = new_size;
-        }
-
-        if whitespace_len.chars == size {
-            // Indentation hasn't changed.
-            LexResult::Ok(Some((BlockOp::Empty, whitespace_len)))
-        } else {
-            // Indentation has increased.
-            LexResult::Ok(Some((BlockOp::Enter, whitespace_len)))
-        }
     }
 
     fn name(&self) -> LexResult<Option<(&str, StrLen)>> {
@@ -508,10 +338,6 @@ fn is_whitespace(c: char) -> bool {
     c.is_whitespace()
 }
 
-fn is_whitespace_not_newline(c: char) -> bool {
-    c != '\n' && is_whitespace(c)
-}
-
 fn can_begin_name(c: char) -> bool {
     c.is_alphabetic()
     // || c.is_symbol() || c.is_punctuation_other() || c.is_punctuation_dash() || c.is_punctuation_connector()
@@ -554,8 +380,6 @@ pub fn lex<'src>(source: &'src str) -> Result<Lexed<'src>, ParseError> {
 
         lexer.at_start = false;
     }
-
-    lexer.consume_blocks();
 
     let tokens = lexer.tokens;
 
@@ -619,7 +443,7 @@ mod tests {
 
     #[test]
     fn foo() {
-        let s = "fac = fun\n    0 -> 1\n    n -> mul n (fac (sub n 1))";
+        let s = "  a\n    b\n  c\n    d\n  e";
 
         let result = lex(s);
 

@@ -2,7 +2,7 @@ root = item* ;
 
 item = binding ;
 
-binding = NAME '=' expr ;
+binding = 'let' NAME '=' expr ;
 
 expr = '(' ')'                 (* Unit *)
      | NUMBER                  (* Int *)
@@ -12,7 +12,9 @@ expr = '(' ')'                 (* Unit *)
      | let                     (* Let binding *)
      | lambda                  (* Lambda *)
      | if                      (* If-else *)
-     | expr expr               (* Application *)
+     | expr expr               (* Application
+                                  Does not permit trailing let bindings, lambdas,
+                                  or if expressions without parens. *)
      | '(' expr ')'            (* Syntactic grouping *)
      ;
 
