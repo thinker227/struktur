@@ -1,3 +1,5 @@
+//! Lexing and parsing source code into an initial AST.
+
 mod lex;
 
 use std::{fmt::Display, rc::Rc};
