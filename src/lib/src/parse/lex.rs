@@ -73,6 +73,30 @@ impl TokenKind {
             EndOfInput => None,
         }
     }
+
+    pub fn display_source(&self) -> &'static str {
+        use TokenKind::*;
+        match self {
+            Name => "name",
+            Number => "number",
+            _String => "string",
+            Newline => "newline",
+            EnterBlock => "enter block",
+            ExitBlock => "exit block",
+            EndOfInput => "end of input",
+
+            _ => self.static_source().unwrap()
+        }
+    }
+}
+
+impl Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.static_source() {
+            Some(x) => write!(f, "`{x}`"),
+            None => write!(f, "{}", self.display_source())
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
