@@ -70,9 +70,18 @@ enum CurrentToken<'src> {
     AtEnd,
 }
 
+/// The context in which an atom expression is parsed.
+///
+/// For expressions starting with a keyword (such as `fun` in lambda expressions,
+/// `if` in if-else expressions, and *especially* `let` in let-expressions),
+/// this is used to distinguish whether the expression is allowed to be parsed immediately after
+/// another expression, in order to not make syntax like `let x = x let y = y` ambiguous.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExprContext {
+    /// The expression is parsed as normal.
     Normal,
+    /// The expression is forbidden from being a keyword-led expression.
+    /// Only used as the context for the argument expression in function applications.
     Trailing,
 }
 
@@ -206,7 +215,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         self.expect(TokenKind::Let)?;
         let name = self.expect(TokenKind::Name)?;
         self.expect(TokenKind::Equals)?;
-        let body = self.parse_expr(ExprContext::Trailing)?;
+        let body = self.parse_expr()?;
 
         let span = TextSpan::between(name.span, body.2.data);
 
@@ -219,14 +228,14 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         ))
     }
 
-    fn parse_expr(&mut self, ctx: ExprContext) -> ParseResult<Expr<Parse>> {
-        self.parse_application_expr(ctx)
+    fn parse_expr(&mut self) -> ParseResult<Expr<Parse>> {
+        self.parse_application_expr()
     }
 
-    fn parse_application_expr(&mut self, ctx: ExprContext) -> ParseResult<Expr<Parse>> {
+    fn parse_application_expr(&mut self) -> ParseResult<Expr<Parse>> {
         let mut result = self.parse_atom_expr(ExprContext::Normal)?;
 
-        while let Some(expr) = self.try_parse_atom_expr(ctx).into_option() {
+        while let Some(expr) = self.try_parse_atom_expr(ExprContext::Trailing).into_option() {
             let expr = expr?;
 
             let span = TextSpan::between(result.2.data, expr.2.data);
@@ -261,7 +270,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                     let span = TextSpan::between(open_paren.span, close_paren.span);
                     (ExprVal::Unit, span)
                 } else {
-                    let expr = self.parse_expr(ExprContext::Normal)?;
+                    let expr = self.parse_expr()?;
                     self.expect(TokenKind::CloseParen)?;
                     return MaybeResult::Ok(expr);
                 }
@@ -314,9 +323,9 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         let r#let = self.expect(TokenKind::Let)?;
         let name = self.expect(TokenKind::Name)?;
         self.expect(TokenKind::Equals)?;
-        let value = self.parse_expr(ExprContext::Normal)?;
+        let value = self.parse_expr()?;
         self.expect(TokenKind::In)?;
-        let expr = self.parse_expr(ExprContext::Normal)?;
+        let expr = self.parse_expr()?;
 
         let span = TextSpan::between(r#let.span, expr.2.data);
 
@@ -334,7 +343,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         let fun = self.expect(TokenKind::Fun)?;
         let param = self.expect(TokenKind::Name)?;
         self.expect(TokenKind::DashGreaterThan)?;
-        let body = self.parse_expr(ExprContext::Normal)?;
+        let body = self.parse_expr()?;
 
         let span = TextSpan::between(fun.span, body.2.data);
 
