@@ -1,8 +1,8 @@
 mod lex;
 
-use std::{rc::Rc, vec};
+use std::{fmt::Display, rc::Rc};
 
-use crate::{ast::*, id::IdProvider, stage::{Parse, Stage}, text_span::TextSpan};
+use crate::{ast::*, id::IdProvider, maybe_result::MaybeResult, stage::{Parse, Stage}, text_span::TextSpan};
 use self::lex::{Token, TokenKind, lex};
 
 #[derive(Debug, Clone, thiserror::Error, miette::Diagnostic)]
@@ -28,18 +28,27 @@ pub enum ParseError {
         blocks: Vec<IndentationHint>,
     },
 
-    #[error("Found {found:?} token, expected {expected:?}")]
+    // #[error("Found {found} token in {context}, expected {expected}")]
+    #[error("Found {found} token, expected {expected}")]
     UnexpectedToken {
         #[label]
         span: TextSpan,
         found: TokenKind,
-        expected: TokenKind,
-    },
+        expected: String,
+    }
+}
 
-    #[error("")]
-    Foo {
-        #[label]
-        bar: (usize, usize)
+impl ParseError {
+    pub(self) fn unexpected_token(
+        span: TextSpan,
+        found: TokenKind,
+        expected: impl Display
+    ) -> Self {
+        Self::UnexpectedToken {
+            span,
+            found,
+            expected: expected.to_string()
+        }
     }
 }
 
@@ -61,10 +70,10 @@ enum CurrentToken<'src> {
     AtEnd,
 }
 
-enum AllowBlock {
-    Allow,
-    Deny,
-    Impartial,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExprContext {
+    Normal,
+    Trailing,
 }
 
 #[derive(Debug, Clone)]
@@ -120,7 +129,15 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         prev
     }
 
-    fn peek(&mut self, ahead: usize) -> Token<'src> {
+    fn _advance_if(&mut self, kind: TokenKind) -> Option<Token<'src>> {
+        if self.current().kind == kind {
+            Some(self.advance())
+        } else {
+            None
+        }
+    }
+
+    fn _peek(&mut self, ahead: usize) -> Token<'src> {
         _ = self.current();
 
         match self.tokens.get(ahead) {
@@ -132,13 +149,14 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     fn expect(&mut self, kind: TokenKind) -> ParseResult<Token<'src>> {
         let current = self.current();
         if current.kind == kind {
+            self.move_next();
             Ok(current)
         } else {
-            Err(ParseError::UnexpectedToken {
-                span: current.span,
-                found: current.kind,
-                expected: kind
-            })
+            Err(ParseError::unexpected_token(
+                current.span,
+                current.kind,
+                kind
+            ))
         }
     }
 
@@ -148,6 +166,10 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         while self.current().kind != TokenKind::EndOfInput {
             let item = self.parse_item()?;
             items.push(item);
+
+            if self.current().kind == TokenKind::EndOfInput {
+                break;
+            }
         }
 
         let eoi = self.advance();
@@ -161,31 +183,189 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     }
 
     fn parse_item(&mut self) -> ParseResult<Item<Parse>> {
-        todo!()
+        self.try_parse_item().unwrap_or_err(|| {
+            let current = self.current();
+            ParseError::unexpected_token(current.span, current.kind, "item")
+        })
     }
 
-    fn parse_expr(&mut self) -> ParseResult<Expr<Parse>> {
-        todo!()
+    fn try_parse_item(&mut self) -> MaybeResult<Item<Parse>, ParseError> {
+        let (item, span) = match self.current().kind {
+            TokenKind::Let => {
+                let (binding, span) = self.parse_binding()?;
+                (ItemVal::Binding(binding), span)
+            }
+
+            _ => return MaybeResult::None
+        };
+
+        MaybeResult::Ok(Item(item, self.node_data(span)))
     }
 
-    fn parse_binding_expr(&mut self) -> ParseResult<Let<Parse>> {
-        todo!()
+    fn parse_binding(&mut self) -> ParseResult<(Binding<Parse>, TextSpan)> {
+        self.expect(TokenKind::Let)?;
+        let name = self.expect(TokenKind::Name)?;
+        self.expect(TokenKind::Equals)?;
+        let body = self.parse_expr(ExprContext::Trailing)?;
+
+        let span = TextSpan::between(name.span, body.2.data);
+
+        Ok((
+            Binding {
+                symbol: name.text.to_owned(),
+                body
+            },
+            span
+        ))
     }
 
-    fn parse_lambda_expr(&mut self) -> ParseResult<Lambda<Parse>> {
-        todo!()
+    fn parse_expr(&mut self, ctx: ExprContext) -> ParseResult<Expr<Parse>> {
+        self.parse_application_expr(ctx)
     }
 
-    fn parse_application_expr(&mut self) -> ParseResult<Application<Parse>> {
-        todo!()
+    fn parse_application_expr(&mut self, ctx: ExprContext) -> ParseResult<Expr<Parse>> {
+        let mut result = self.parse_atom_expr(ExprContext::Normal)?;
+
+        while let Some(expr) = self.try_parse_atom_expr(ctx).into_option() {
+            let expr = expr?;
+
+            let span = TextSpan::between(result.2.data, expr.2.data);
+
+            result = Expr(
+                ExprVal::Apply(Box::new(Application {
+                    target: result,
+                    arg: expr
+                })),
+                (),
+                self.node_data(span)
+            );
+        }
+
+        Ok(result)
+    }
+
+    fn parse_atom_expr(&mut self, ctx: ExprContext) -> ParseResult<Expr<Parse>> {
+        self.try_parse_atom_expr(ctx).unwrap_or_err(|| {
+            let current = self.current();
+            ParseError::unexpected_token(current.span, current.kind, "expression")
+        })
+    }
+
+    fn try_parse_atom_expr(&mut self, ctx: ExprContext) -> MaybeResult<Expr<Parse>, ParseError> {
+        let (expr, span) = match self.current().kind {
+            TokenKind::OpenParen => {
+                let open_paren = self.advance();
+
+                if self.current().kind == TokenKind::CloseParen {
+                    let close_paren = self.advance();
+                    let span = TextSpan::between(open_paren.span, close_paren.span);
+                    (ExprVal::Unit, span)
+                } else {
+                    let expr = self.parse_expr(ExprContext::Normal)?;
+                    self.expect(TokenKind::CloseParen)?;
+                    return MaybeResult::Ok(expr);
+                }
+            }
+
+            TokenKind::Number => {
+                let number = self.advance();
+                let val = number.text.parse().unwrap();
+                (ExprVal::Int(val), number.span)
+            }
+
+            TokenKind::True | TokenKind::False => {
+                let bool = self.advance();
+                let val = bool.kind == TokenKind::True;
+                (ExprVal::Bool(val), bool.span)
+            }
+
+            TokenKind::_String => {
+                let str = self.advance();
+                let text = str.text;
+                let val = text[1 .. text.len() - 1].to_owned();
+                (ExprVal::String(val), str.span)
+            }
+
+            TokenKind::Name => {
+                let name = self.advance();
+                let var = name.text.to_owned();
+                (ExprVal::Var(var), name.span)
+            }
+
+            TokenKind::Let if ctx == ExprContext::Normal => {
+                let (r#let, span) = self.parse_let_expr()?;
+                (ExprVal::Bind(Box::new(r#let)), span)
+            }
+
+            TokenKind::Fun if ctx == ExprContext::Normal => {
+                let (lambda, span) = self.parse_lambda_expr()?;
+                (ExprVal::Lambda(Box::new(lambda)), span)
+            }
+
+            TokenKind::If if ctx == ExprContext::Normal => todo!(),
+
+            _ => return MaybeResult::None
+        };
+
+        MaybeResult::Ok(Expr(expr, (), self.node_data(span)))
+    }
+
+    fn parse_let_expr(&mut self) -> ParseResult<(Let<Parse>, TextSpan)> {
+        let r#let = self.expect(TokenKind::Let)?;
+        let name = self.expect(TokenKind::Name)?;
+        self.expect(TokenKind::Equals)?;
+        let value = self.parse_expr(ExprContext::Normal)?;
+        self.expect(TokenKind::In)?;
+        let expr = self.parse_expr(ExprContext::Normal)?;
+
+        let span = TextSpan::between(r#let.span, expr.2.data);
+
+        Ok((
+            Let {
+                symbol: name.text.to_owned(),
+                value,
+                expr
+            },
+            span
+        ))
+    }
+
+    fn parse_lambda_expr(&mut self) -> ParseResult<(Lambda<Parse>, TextSpan)> {
+        let fun = self.expect(TokenKind::Fun)?;
+        let param = self.expect(TokenKind::Name)?;
+        self.expect(TokenKind::DashGreaterThan)?;
+        let body = self.parse_expr(ExprContext::Normal)?;
+
+        let span = TextSpan::between(fun.span, body.2.data);
+
+        Ok((
+            Lambda {
+                param: param.text.to_owned(),
+                body
+            },
+            span
+        ))
     }
 }
 
 /// Parses a string into an AST.
 pub fn parse(source: &str) -> Result<Ast<Parse>, ParseError> {
     let lexed = lex(source)?;
+    // dbg!(&lexed);
     let mut parser = Parser::new(&lexed.tokens, lexed.eoi);
     let root = parser.parse_root()?;
 
     Ok(Ast::new(root, (), ()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn foo() {
+        let x = parse("let foo = fun f -> f 1 2 3");
+
+        dbg!(&x);
+    }
 }
