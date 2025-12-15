@@ -3,6 +3,7 @@
 
 pub mod id;
 pub mod text_span;
+pub mod maybe_result;
 pub mod stage;
 pub mod ast;
 pub mod parse;
