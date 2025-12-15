@@ -271,6 +271,17 @@ impl<'src> Lexer<'src> {
         LexResult::Ok(())
     }
 
+    pub fn consume_blocks(&mut self) {
+        while self.blocks.pop_back().is_some() {
+            let token = Token {
+                kind: TokenKind::ExitBlock,
+                text: "",
+                span: TextSpan::empty(self.offset),
+            };
+            self.tokens.push(token);
+        }
+    }
+
     pub fn lex_token(&mut self) -> LexResult<()> {
         let current = LexResult::from(self.current())?;
 
@@ -331,11 +342,13 @@ impl<'src> Lexer<'src> {
                 }
                 BlockOp::Exit { levels } => {
                     for _ in 0..levels {
-                        self.blocks.pop_front().unwrap();
-                        self.push_token(PartialToken {
-                            chars: 0,
+                        self.blocks.pop_back().unwrap();
+
+                        let token = self.construct_token(PartialToken {
+                            chars,
                             kind: TokenKind::ExitBlock
                         })?;
+                        self.tokens.push(token);
                     }
                 }
                 BlockOp::Empty => {
@@ -517,6 +530,8 @@ pub fn lex<'src>(source: &'src str) -> Result<Lexed<'src>, ParseError> {
 
         lexer.at_start = false;
     }
+
+    lexer.consume_blocks();
 
     let tokens = lexer.tokens;
 
