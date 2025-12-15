@@ -239,27 +239,16 @@ impl Resolver {
         Item(val, node_data.clone().into_stage())
     }
 
-    fn function(&mut self, function: &Binding<Parse>, node_data: &NodeData<Parse>, function_symbol: Symbol) -> Binding<Sem> {
-        let (sem_body, param_symbol) = self.in_scope(|this| {
-            let param_data = VariableData {
-                name: function.param.clone(),
-                decl: node_data.id,
-                data: ()
-            };
-
-            let param_symbol = this.register(function.param.clone(), SymbolData::Var(param_data))
-                .map_err(|d| format!("duplicate parameter `{}`", d.name()))
-                .unwrap();
-
-            let sem_body = this.expr(&function.body);
-
-            (sem_body, param_symbol)
+    fn function(&mut self, function: &Binding<Parse>, _: &NodeData<Parse>, function_symbol: Symbol) -> Binding<Sem> {
+        let sem_body = self.in_scope(|this| {
+            // This technically doesn't need a scope,
+            // but it's nice just to ensure that symbols don't accidentally leak out.
+            this.expr(&function.body)
         });
 
         Binding {
             body: sem_body,
-            symbol: function_symbol,
-            param: param_symbol
+            symbol: function_symbol
         }
     }
 

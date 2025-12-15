@@ -20,7 +20,6 @@ pub enum ItemVal<S: Stage> {
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct Binding<S: Stage> {
     pub symbol: S::Sym,
-    pub param: S::Sym,
     pub body: Expr<S>,
 }
 

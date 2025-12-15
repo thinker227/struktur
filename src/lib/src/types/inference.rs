@@ -561,8 +561,7 @@ impl Embedder {
                 let typed_body = self.expr(&function.body);
                 ItemVal::Binding(Binding {
                     body: typed_body,
-                    symbol: function.symbol,
-                    param: function.symbol
+                    symbol: function.symbol
                 })
             }
         };
@@ -613,7 +612,7 @@ impl Embedder {
 pub fn type_check(ast: &Ast<Sem>) -> Ast<Typed> {
     // Fetch the reference graph for the tree and compute the strongly-connected components.
     // This is used to know what groups of top-levels bindings need to be inferred together
-    // so that unification variables won't unnecessarily leak from one function into another.
+    // so that unification variables won't unnecessarily leak from one binding into another.
     let references = reference_graph(ast);
     let scc = tarjan_scc(&references);
     let groups = scc.iter()
@@ -625,55 +624,45 @@ pub fn type_check(ast: &Ast<Sem>) -> Ast<Typed> {
     let raw_ctx = RawContext::new();
     let ctx = Context::new(&raw_ctx);
 
-    let mut function_types = HashMap::new();
+    let mut binding_vars = HashMap::new();
 
     for group in groups {
-        // Create types for each function and their parameters
-        // so that every function in the group has a corresponding type when inferring their bodies.
+        // Create types for each binding and their parameters
+        // so that every binding in the group has a corresponding type when inferring their bodies.
         for item in &group {
-            let decl = ast.symbols().get(*item).decl();
-            let ItemVal::Binding(function) = &ast.get_node_as::<Item<Sem>>(decl).unwrap().0;
-
             // Make sure that the fresh meta variables do not have level 0.
             let ctx = ctx.extend();
 
-            let param_var = ctx.fresh_meta();
-            let ret_var = ctx.fresh_meta();
-            let function_ty = FunctionType {
-                param: InferType::Var(param_var.clone()),
-                ret: InferType::Var(ret_var)
-            };
+            let binding_var = ctx.fresh_meta();
 
-            function_types.insert(*item, function_ty.clone());
-
-            ctx.add_symbol_ty(function.param, PolyType::Type(param_var.into())).unwrap();
-            ctx.add_symbol_ty(*item, PolyType::Type(function_ty.into())).unwrap();
+            binding_vars.insert(*item, binding_var.clone());
+            ctx.add_symbol_ty(*item, PolyType::Type(InferType::Var(binding_var))).unwrap();
         }
 
-        // Infer the bodies of each function.
+        // Infer the bodies of each binding.
         for item in &group {
             let decl = ast.symbols().get(*item).decl();
-            let ItemVal::Binding(function) = &ast.get_node_as::<Item<Sem>>(decl).unwrap().0;
+            let ItemVal::Binding(binding) = &ast.get_node_as::<Item<Sem>>(decl).unwrap().0;
 
             let ctx = ctx.extend();
 
-            let ret_ty = infer(&ctx, &function.body);
+            let body_ty = infer(&ctx, &binding.body);
 
-            let function_ty = function_types.get(item).unwrap();
+            let binding_var = binding_vars.get(item).unwrap().clone();
 
             // Important that the level here is 1,
             // since unification variables declared at the top-level
             // would otherwise not be able to have their levels lowerd properly.
-            unify(&ret_ty, &function_ty.ret, 1);
+            unify(&body_ty, &InferType::Var(binding_var), 1);
         }
 
-        // Try to generalize the function types.
+        // Try to generalize the binding types.
         for item in &group {
-            let function_ty = function_types.get(item).unwrap();
+            let binding_var = binding_vars.get(item).unwrap().clone();
 
-            // If we can generalize the function type then replace the type in the context for further use.
+            // If we can generalize the binding type then replace the type in the context for further use.
             // Otherwise, the type can just be used as-is since it doesn't contain any unsolved unification variables.
-            if let Ok(general) = generalize(&ctx, function_ty.clone().into()) {
+            if let Ok(general) = generalize(&ctx, InferType::Var(binding_var)) {
                 ctx.replace_symbol_ty(*item, PolyType::Forall(general));
             }
         }
