@@ -1,0 +1,12 @@
+[package]
+name = "struktur"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+derivative = "2.2.0"
+miette = "7.6.0"
+petgraph = "0.8.3"
+slotmap = "1.1.1"
+thiserror = "2.0.17"
+unicode_categories = "0.1.1"

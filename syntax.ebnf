@@ -1,0 +1,23 @@
+root = item* ;
+
+item = binding ;
+
+binding = NAME '=' expr ;
+
+expr = '(' ')'                 (* Unit *)
+     | NUMBER                  (* Int *)
+     | 'true' | 'false'        (* Bool *)
+     | STRING                  (* String *)
+     | NAME                    (* Variable *)
+     | let                     (* Let binding *)
+     | lambda                  (* Lambda *)
+     | if                      (* If-else *)
+     | expr expr               (* Application *)
+     | '(' expr ')'            (* Syntactic grouping *)
+     ;
+
+let = 'let' NAME '=' expr 'in' expr ;
+
+lambda = 'fun' NAME '->' expr ;
+
+if = 'if' expr 'then' expr 'else' expr ;
