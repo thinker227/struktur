@@ -175,8 +175,10 @@ impl InferType {
     pub fn substitute(&self, subs: &HashMap<TypeVar, InferType>) -> Self {
         match self {
             Self::Type(ty) => ty.substitute(subs),
-            Self::Var(var) => var.get_sub().cloned()
-                .unwrap_or_else(|| var.clone().into())
+            Self::Var(var) => match var.get_sub() {
+                Some(ty) => ty.substitute(subs),
+                None => var.clone().into()
+            }
         }
     }
 }
