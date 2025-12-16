@@ -17,7 +17,7 @@
 
 use std::fmt::Debug;
 
-use crate::{symbols::{Symbol, Symbols}, types::{TypedExprData, TypedFunctionData, TypedVariableData}, text_span::TextSpan};
+use crate::{symbols::{Symbol, Symbols}, types::{TypedExprData, TypedBindingData, TypedVariableData}, text_span::TextSpan};
 
 /// The compilation stage of an AST.
 pub trait Stage {
@@ -81,5 +81,5 @@ impl Stage for Typed {
     type Syms = Symbols<Typed>;
     type ExprData = TypedExprData;
     type VarData = TypedVariableData;
-    type FuncData = TypedFunctionData;
+    type FuncData = TypedBindingData;
 }

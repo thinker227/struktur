@@ -12,7 +12,7 @@ use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedExprData, TypedFunctionData, TypedVariableData}};
+use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedExprData, TypedBindingData, TypedVariableData}};
 use self::var::MetaVar;
 
 /*----------------------*\
@@ -518,13 +518,6 @@ impl Embedder {
         }
     }
 
-    fn get_function_type(&self, symbol: Symbol) -> PolyType<FunctionType<Pruned>> {
-        self.get_symbol_type(symbol).map(|ty| match ty {
-            MonoType::Function(function) => function.as_ref().clone(),
-            _ => panic!("expected function type")
-        })
-    }
-
     pub fn ast(&self, ast: &Ast<Sem>) -> Ast<Typed> {
         let typed_root = self.root(ast.root());
 
@@ -542,8 +535,8 @@ impl Embedder {
                 }
             )),
             SymbolData::Func(function) => SymbolData::Func(function.map::<Typed>(|()|
-                TypedFunctionData {
-                    ty: self.get_function_type(symbol)
+                TypedBindingData {
+                    ty: self.get_symbol_type(symbol)
                 }
             ))
         }

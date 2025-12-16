@@ -174,6 +174,6 @@ pub struct TypedVariableData {
 
 /// Additional data for typed functions.
 #[derive(Debug, Clone)]
-pub struct TypedFunctionData {
-    pub ty: PolyType<FunctionType<Pruned>>,
+pub struct TypedBindingData {
+    pub ty: PolyType<MonoType<Pruned>>,
 }
