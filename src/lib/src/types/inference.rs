@@ -199,7 +199,7 @@ impl FunctionType<Vars> {
     /// Substitutes type variables within the type for other types.
     pub fn substitute(&self, subs: &HashMap<TypeVar, InferType>) -> Self {
         let param = self.param.substitute(subs);
-        let ret = self.param.substitute(subs);
+        let ret = self.ret.substitute(subs);
         Self { param, ret }
     }
 }
