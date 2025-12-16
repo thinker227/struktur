@@ -324,6 +324,18 @@ impl Resolver {
                     arg: sem_arg
                 })
             }
+
+            ExprVal::If(if_else) => {
+                let sem_condition = self.expr(&if_else.condition);
+                let sem_if_true = self.expr(&if_else.if_true);
+                let sem_if_false = self.expr(&if_else.if_false);
+
+                ExprVal::if_else(IfElse {
+                    condition: sem_condition,
+                    if_true: sem_if_true,
+                    if_false: sem_if_false
+                })
+            }
         };
 
         Expr(val, (), node_data.clone().into_stage())

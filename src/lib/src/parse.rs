@@ -313,7 +313,10 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                 (ExprVal::Lambda(Box::new(lambda)), span)
             }
 
-            TokenKind::If if ctx == ExprContext::Normal => todo!(),
+            TokenKind::If if ctx == ExprContext::Normal => {
+                let (if_else, span) = self.parse_if_else_expr()?;
+                (ExprVal::If(Box::new(if_else)), span)
+            }
 
             _ => return MaybeResult::None
         };
@@ -353,6 +356,26 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             Lambda {
                 param: param.text.to_owned(),
                 body
+            },
+            span
+        ))
+    }
+
+    fn parse_if_else_expr(&mut self) -> ParseResult<(IfElse<Parse>, TextSpan)> {
+        let r#if = self.expect(TokenKind::If)?;
+        let condition = self.parse_expr()?;
+        self.expect(TokenKind::Then)?;
+        let if_true = self.parse_expr()?;
+        self.expect(TokenKind::Else)?;
+        let if_false = self.parse_expr()?;
+
+        let span = TextSpan::between(r#if.span, if_false.2.data);
+
+        Ok((
+            IfElse {
+                condition,
+                if_true,
+                if_false
             },
             span
         ))

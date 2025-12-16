@@ -417,6 +417,22 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferType {
 
             ret_ty
         }
+
+        ExprVal::If(if_else) => {
+            let condition_ty = infer(ctx, &if_else.condition);
+            let if_true_ty = infer(ctx, &if_else.if_true);
+            let if_false_ty = infer(ctx, &if_else.if_false);
+
+            unify(
+                &condition_ty,
+                &InferType::Type(MonoType::Primitive(Primitive::Bool)),
+                ctx.forall_level
+            );
+
+            unify(&if_true_ty, &if_false_ty, ctx.forall_level);
+
+            if_true_ty.clone()
+        }
     };
 
     ctx.add_expr_ty(node_data.id, ty.clone()).unwrap();
@@ -586,6 +602,12 @@ impl Embedder {
             ExprVal::Apply(application) => ExprVal::apply(Application {
                 target: self.expr(&application.target),
                 arg: self.expr(&application.arg)
+            }),
+
+            ExprVal::If(if_else) => ExprVal::if_else(IfElse {
+                condition: self.expr(&if_else.condition),
+                if_true: self.expr(&if_else.if_true),
+                if_false: self.expr(&if_else.if_false)
             })
         };
 

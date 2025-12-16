@@ -38,6 +38,7 @@ pub enum ExprVal<S: Stage> {
     Bind(Box<Let<S>>),
     Lambda(Box<Lambda<S>>),
     Apply(Box<Application<S>>),
+    If(Box<IfElse<S>>),
 }
 
 #[derive(Derivative)]
@@ -60,6 +61,14 @@ pub struct Lambda<S: Stage> {
 pub struct Application<S: Stage> {
     pub target: Expr<S>,
     pub arg: Expr<S>,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct IfElse<S: Stage> {
+    pub condition: Expr<S>,
+    pub if_true: Expr<S>,
+    pub if_false: Expr<S>,
 }
 
 pub struct TypeExpr<S: Stage>(pub TypeExprVal<S>, pub NodeData<S>);

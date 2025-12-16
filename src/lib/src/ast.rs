@@ -78,6 +78,10 @@ impl<S: Stage> ExprVal<S> {
     pub fn apply(application: Application<S>) -> Self {
         Self::Apply(Box::new(application))
     }
+
+    pub fn if_else(if_else: IfElse<S>) -> Self {
+        Self::If(Box::new(if_else))
+    }
 }
 
 /// An ID for a node.
@@ -201,6 +205,12 @@ pub trait Visitor {
         self.expr(&application.target);
         self.expr(&application.arg);
     }
+
+    fn if_else_expr(&mut self, if_else: &IfElse<Self::S>, data: ExprDataBundle<'_, Self::S>) {
+        self.expr(&if_else.condition);
+        self.expr(&if_else.if_true);
+        self.expr(&if_else.if_false);
+    }
 }
 
 pub fn default_visit_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &Expr<V::S>) {
@@ -214,5 +224,6 @@ pub fn default_visit_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &Expr<V::S
         ExprVal::Bind(binding) => visitor.bind_expr(binding, data),
         ExprVal::Lambda(lambda) => visitor.lambda_expr(lambda, data),
         ExprVal::Apply(application) => visitor.apply_expr(application, data),
+        ExprVal::If(if_else) => visitor.if_else_expr(if_else, data),
     }
 }
