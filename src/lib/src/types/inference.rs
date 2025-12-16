@@ -226,7 +226,7 @@ fn occurs(var: &MetaVar, within: &InferType) -> bool {
             occurs(var, &function.param) || occurs(var, &function.ret),
 
         InferType::Var(other) => match other.get_sub() {
-            Some(sub) => occurs(other, sub),
+            Some(sub) => occurs(var, sub),
             None => other == var
         }
 
