@@ -7,12 +7,7 @@
 
 use std::collections::HashMap;
 
-use crate::{ast, id::Id, stage::Typed, symbols::Symbol};
-
-/// ID of a continuation parameter.
-#[derive(Debug, Clone, Copy)]
-#[repr(transparent)]
-pub struct Continuation(Id);
+use crate::{ast, id::{Id, IdProvider}, stage::Typed, symbols::Symbol};
 
 /// A binding.
 #[derive(Debug, Clone)]
@@ -23,16 +18,33 @@ pub struct Binding {
     value: Atomic,
 }
 
-/// A function.
+/// A lambda function.
 #[derive(Debug, Clone)]
-pub struct Function {
-    /// Symbol of the function parameter.
-    param: Symbol,
-    /// The continuation passed to the function.
-    cont: Continuation,
-    /// Body of the function.
+pub struct Lambda {
+    /// Symbol of the lambda parameter.
+    param: CpsSymbol,
+    /// The continuation passed to the lambda.
+    cont: Option<Continuation>,
+    /// Body of the lambda.
     body: Complex,
 }
+
+/// A function parameter.
+#[derive(Debug, Clone, Copy)]
+pub enum CpsSymbol {
+    Symbol(Symbol),
+    Gen(GenSymbol),
+}
+
+/// ID of a continuation parameter.
+#[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+pub struct Continuation(Id);
+
+/// A generated symbol.
+#[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+pub struct GenSymbol(Id);
 
 /// A complex expression which always terminates in a function call instead of producing a value.
 #[derive(Debug, Clone)]
@@ -85,9 +97,9 @@ pub enum Atomic {
     Int(u64),
     Bool(bool),
     String(String),
-    Var(Symbol),
+    Var(CpsSymbol),
     Cont(Continuation),
-    Lambda(Box<Function>),
+    Lambda(Box<Lambda>),
 }
 
 /// Contains all info returned by transforming an AST into CPS.
