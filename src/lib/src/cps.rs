@@ -2,12 +2,17 @@
 //!
 //! Functions in CPS consist of a [Complex] expression which might have some kind of "effect"
 //! (such as introducting a variable or branching)
-//! and which eventually terminates in a call to either a continuation or some other function.
+//! and which eventually terminates in a call to either a [Continuation] or some other function.
 //! Importantly, functions in CPS do not return values, they only pass values forward to other functions.
 
 use std::collections::HashMap;
 
-use crate::{ast, stage::Typed, symbols::Symbol};
+use crate::{ast, id::Id, stage::Typed, symbols::Symbol};
+
+/// ID of a continuation parameter.
+#[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+pub struct Continuation(Id);
 
 /// A binding.
 #[derive(Debug, Clone)]
@@ -23,6 +28,8 @@ pub struct Binding {
 pub struct Function {
     /// Symbol of the function parameter.
     param: Symbol,
+    /// The continuation passed to the function.
+    cont: Continuation,
     /// Body of the function.
     body: Complex,
 }
@@ -30,22 +37,22 @@ pub struct Function {
 /// A complex expression which always terminates in a function call instead of producing a value.
 #[derive(Debug, Clone)]
 pub enum Complex {
-    /// A call to a function with some value as the argument.
+    /// A call to a function produced by an atomic expression, with some value as the argument.
     Call(Target, Atomic),
-    /// Introduces a let-binding with a nested body.
+    /// Introduces a let-binding with a nested complex expression.
     Let(Box<Let>),
     /// Branches to two complex sub-expressions.
     If(Box<IfElse>),
 }
 
 /// The target of a function call.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Target {
-    /// Call the continuation passed to the function.
-    Continuation,
-    /// Call another function.
-    Function(Symbol),
-    /// Discard the argument and halt execution.
+    /// Call a continuation.
+    Cont(Continuation),
+    /// Call a function producted by an atomic expression.
+    Expr(Atomic),
+    /// Halt execution.
     Halt,
 }
 
@@ -79,6 +86,7 @@ pub enum Atomic {
     Bool(bool),
     String(String),
     Var(Symbol),
+    Cont(Continuation),
     Lambda(Box<Function>),
 }
 
