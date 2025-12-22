@@ -15,7 +15,7 @@ pub struct Binding {
     /// Symbol of the binding.
     symbol: Symbol,
     /// Value bound to the binding.
-    value: Atomic,
+    value: Complex,
 }
 
 /// A lambda function.
@@ -24,6 +24,8 @@ pub struct Lambda {
     /// Symbol of the lambda parameter.
     param: CpsSymbol,
     /// The continuation passed to the lambda.
+    /// Only lambdas declared in source have continuations,
+    /// lambdas generated during CPS conversion do not.
     cont: Option<Continuation>,
     /// Body of the lambda.
     body: Complex,
@@ -128,7 +130,21 @@ fn m(e@ast::Expr(expr, _, _): &ast::Expr<Typed>) -> Atomic {
 
 fn t(e@ast::Expr(expr, _, _): &ast::Expr<Typed>, cont: Atomic) -> Complex {
     match expr {
-        ast::ExprVal::Bind(binding) => todo!(),
+        ast::ExprVal::Bind(binding) => {
+            let p = CpsSymbol::Gen(GEN_PROVIDER.next());
+            t(
+                &binding.value,
+                Atomic::Lambda(Box::new(Lambda {
+                    param: p,
+                    cont: None,
+                    body: Complex::Let(Box::new(Let {
+                        symbol: binding.symbol,
+                        value: Atomic::Var(p),
+                        expr: t(&binding.expr, cont)
+                    }))
+                }))
+            )
+        }
         ast::ExprVal::Apply(application) => {
             let target = CpsSymbol::Gen(GEN_PROVIDER.next());
             let arg = CpsSymbol::Gen(GEN_PROVIDER.next());
@@ -152,7 +168,21 @@ fn t(e@ast::Expr(expr, _, _): &ast::Expr<Typed>, cont: Atomic) -> Complex {
                 }))
             )
         }
-        ast::ExprVal::If(if_else) => todo!(),
+        ast::ExprVal::If(if_else) => {
+            let condition = CpsSymbol::Gen(GEN_PROVIDER.next());
+            t(
+                &if_else.condition,
+                Atomic::Lambda(Box::new(Lambda {
+                    param: condition,
+                    cont: None,
+                    body: Complex::If(Box::new(IfElse {
+                        condition: Atomic::Var(condition),
+                        if_true: t(&if_else.if_true, cont.clone()),
+                        if_false: t(&if_else.if_false, cont)
+                    }))
+                }))
+            )
+        }
         _ => Complex::Call(Target::Expr(cont), m(e), None)
     }
 }
@@ -165,5 +195,18 @@ pub struct Cps {
 
 /// Transforms an AST into CPS representation.
 pub fn transform_cps(ast: &ast::Ast<Typed>) -> Cps {
-    todo!()
+    let mut bindings = HashMap::new();
+    for item in &ast.root().0 {
+        let ast::ItemVal::Binding(binding) = &item.0;
+
+        let cont = CONTINUATION_PROVIDER.next();
+        let symbol = binding.symbol;
+
+        bindings.insert(symbol, Binding {
+            symbol: symbol,
+            value: t(&binding.body, Atomic::Cont(cont))
+        });
+    }
+
+    Cps { bindings }
 }
