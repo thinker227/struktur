@@ -13,38 +13,40 @@ use crate::{ast, id::{Id, IdProvider}, stage::Typed, symbols::Symbol};
 #[derive(Debug, Clone)]
 pub struct Binding {
     /// Symbol of the binding.
-    symbol: Symbol,
+    pub symbol: Symbol,
+    /// The continuation which is passed the value of the binding.
+    pub cont: Continuation,
     /// Value bound to the binding.
-    value: Complex,
+    pub value: Complex,
 }
 
 /// A lambda function.
 #[derive(Debug, Clone)]
 pub struct Lambda {
     /// Symbol of the lambda parameter.
-    param: CpsSymbol,
+    pub param: CpsSymbol,
     /// The continuation passed to the lambda.
     /// Only lambdas declared in source have continuations,
     /// lambdas generated during CPS conversion do not.
-    cont: Option<Continuation>,
+    pub cont: Option<Continuation>,
     /// Body of the lambda.
-    body: Complex,
+    pub body: Complex,
 }
 
 /// A function parameter.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CpsSymbol {
     Symbol(Symbol),
     Gen(GenSymbol),
 }
 
 /// ID of a continuation parameter.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Continuation(Id);
 
 /// A generated symbol.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct GenSymbol(Id);
 
@@ -73,22 +75,22 @@ pub enum Target {
 #[derive(Debug, Clone)]
 pub struct Let {
     /// Symbol of the variable.
-    symbol: Symbol,
+    pub symbol: Symbol,
     /// Value bound to the binding.
-    value: Atomic,
+    pub value: Atomic,
     /// Rest of the function body.
-    expr: Complex,
+    pub expr: Complex,
 }
 
 /// Branches a complex expression.
 #[derive(Debug, Clone)]
 pub struct IfElse {
     /// The value to branch based on.
-    condition: Atomic,
+    pub condition: Atomic,
     /// Rest of the function body if the condition holds.
-    if_true: Complex,
+    pub if_true: Complex,
     /// Rest of the function body if the condition does not hold.
-    if_false: Complex,
+    pub if_false: Complex,
 }
 
 /// An an atomic expression which produces a value.
@@ -107,7 +109,7 @@ static CONTINUATION_PROVIDER: IdProvider<Continuation> = IdProvider::new(Continu
 
 static GEN_PROVIDER: IdProvider<GenSymbol> = IdProvider::new(GenSymbol);
 
-fn m(e@ast::Expr(expr, _, _): &ast::Expr<Typed>) -> Atomic {
+fn m(ast::Expr(expr, _, _): &ast::Expr<Typed>) -> Atomic {
     match expr {
         ast::ExprVal::Unit => Atomic::Unit,
         ast::ExprVal::Int(x) => Atomic::Int(*x),
@@ -190,7 +192,7 @@ fn t(e@ast::Expr(expr, _, _): &ast::Expr<Typed>, cont: Atomic) -> Complex {
 /// Contains all info returned by transforming an AST into CPS.
 #[derive(Debug, Clone)]
 pub struct Cps {
-    bindings: HashMap<Symbol, Binding>,
+    pub bindings: HashMap<Symbol, Binding>,
 }
 
 /// Transforms an AST into CPS representation.
@@ -204,6 +206,7 @@ pub fn transform_cps(ast: &ast::Ast<Typed>) -> Cps {
 
         bindings.insert(symbol, Binding {
             symbol: symbol,
+            cont,
             value: t(&binding.body, Atomic::Cont(cont))
         });
     }
