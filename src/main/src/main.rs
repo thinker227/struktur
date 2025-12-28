@@ -1,16 +1,12 @@
-use std::{env, fs};
+use std::{env, fs, io::Write as _};
 
-use struktur::parse::parse;
+use struktur::{codegen::emit, cps::transform_cps, parse::parse, symbols::resolve_symbols, types::type_check};
 use miette::{NamedSource, Report};
-
-// use struktur::stage::Parse;
-// use struktur::ast::*;
-// use struktur::symbols::resolve_symbols;
-// use struktur::types::{Type, type_check};
 
 fn main() {
     let args = env::args().skip(1).collect::<Vec<_>>();
     let path = &args[0];
+    let out_path = &args[1];
     let text = fs::read_to_string(path).unwrap();
     let source = NamedSource::new(path, text);
 
@@ -24,77 +20,14 @@ fn main() {
         }
     };
 
-    // let x = NodeId::next();
+    let sem = resolve_symbols(&parsed);
 
-    // let id: Item<Parse> = Item(
-    //     ItemVal::Function(Function {
-    //         symbol: String::from("id"),
-    //         param: String::from("x"),
-    //         body: Expr(
-    //             ExprVal::Var(String::from("x")),
-    //             (),
-    //             NodeData {
-    //                 data: (),
-    //                 id: NodeId::next()
-    //             }
-    //         )
-    //     }),
-    //     NodeData {
-    //         data: (),
-    //         id: NodeId::next()
-    //     }
-    // );
+    let typed = type_check(&sem);
 
-    // let main: Item<Parse> = Item(
-    //     ItemVal::Function(Function {
-    //         symbol: String::from("main"),
-    //         param: String::from("_"),
-    //         body: Expr(
-    //             Application {
-    //                 target: Expr(
-    //                     ExprVal::Var(String::from("id")),
-    //                     (),
-    //                     NodeData {
-    //                         data: (),
-    //                         id: NodeId::next()
-    //                     }
-    //                 ),
-    //                 arg: Expr(
-    //                     ExprVal::Bool(true),
-    //                     (),
-    //                     NodeData {
-    //                         data: (),
-    //                         id: x
-    //                     }
-    //                 )
-    //             }.into(),
-    //             (),
-    //             NodeData {
-    //                 data: (),
-    //                 id: NodeId::next()
-    //             }
-    //         )
-    //     }),
-    //     NodeData {
-    //         data: (),
-    //         id: NodeId::next()
-    //     }
-    // );
+    let cps = transform_cps(&typed);
 
-    // let root = Root(
-    //     vec![id, main],
-    //     NodeData {
-    //         data: (),
-    //         id: NodeId::next()
-    //     }
-    // );
-    // let parse = Ast::new(root, (), ());
-    // dbg!(parse.get_node(x).id());
-    // dbg!(parse.get_node_as::<Expr<Parse>>(x));
+    let out = emit(&cps);
 
-    // let sem = resolve_symbols(&parse);
-
-    // let _typed = type_check(&sem);
-
-    // let _t = Type::function(Type::int(), Type::bool());
+    let mut out_file = fs::File::create(&out_path).unwrap();
+    out_file.write_all(out.as_bytes()).unwrap();
 }
