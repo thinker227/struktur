@@ -14,8 +14,6 @@ use crate::{ast, id::{Id, IdProvider}, stage::Typed, symbols::Symbol};
 pub struct Binding {
     /// Symbol of the binding.
     pub symbol: Symbol,
-    /// The continuation which is passed the value of the binding.
-    pub cont: Continuation,
     /// Value bound to the binding.
     pub value: Complex,
 }
@@ -55,20 +53,13 @@ pub struct GenSymbol(Id);
 pub enum Complex {
     /// A call to a function produced by an atomic expression, with some value as the argument
     /// and an optional argument to pass as the continuation for the function, if it takes one.
-    Call(Target, Atomic, Option<Atomic>),
+    Call(Atomic, Atomic, Option<Atomic>),
+    /// Meta-return the value produced by an atomic expression.
+    Return(Atomic),
     /// Introduces a let-binding with a nested complex expression.
     Let(Box<Let>),
     /// Branches to two complex sub-expressions.
     If(Box<IfElse>),
-}
-
-/// The target of a function call.
-#[derive(Debug, Clone)]
-pub enum Target {
-    /// Call a function producted by an atomic expression.
-    Expr(Atomic),
-    /// Halt execution.
-    Halt,
 }
 
 /// A let-binding introduced in a complex expression.
@@ -105,6 +96,16 @@ pub enum Atomic {
     Lambda(Box<Lambda>),
 }
 
+/// A continuation passed during conversion of a complex expression.
+#[derive(Debug, Clone)]
+enum ConversionContinuation {
+    /// The complex expression is in the context of a continuation.
+    Continuable(Atomic),
+    /// The complex expression is the body of a top-level binding
+    /// which will be assigned instead of a continuation being called.
+    Assign,
+}
+
 static CONTINUATION_PROVIDER: IdProvider<Continuation> = IdProvider::new(Continuation);
 
 static GEN_PROVIDER: IdProvider<GenSymbol> = IdProvider::new(GenSymbol);
@@ -122,7 +123,7 @@ fn m(ast::Expr(expr, _, _): &ast::Expr<Typed>) -> Atomic {
             Atomic::Lambda(Box::new(Lambda {
                 param: CpsSymbol::Symbol(lambda.param),
                 cont: Some(cont),
-                body: t(&lambda.body, Atomic::Cont(cont))
+                body: t(&lambda.body, ConversionContinuation::Continuable(Atomic::Cont(cont)))
             }))
         }
         ast::ExprVal::Apply(_) => unimplemented!(),
@@ -130,51 +131,62 @@ fn m(ast::Expr(expr, _, _): &ast::Expr<Typed>) -> Atomic {
     }
 }
 
-fn t(e@ast::Expr(expr, _, _): &ast::Expr<Typed>, cont: Atomic) -> Complex {
+fn t(e@ast::Expr(expr, _, _): &ast::Expr<Typed>, cont: ConversionContinuation) -> Complex {
     match expr {
         ast::ExprVal::Bind(binding) => {
-            let p = CpsSymbol::Gen(GEN_PROVIDER.next());
+            let param = CpsSymbol::Gen(GEN_PROVIDER.next());
             t(
                 &binding.value,
-                Atomic::Lambda(Box::new(Lambda {
-                    param: p,
+                ConversionContinuation::Continuable(Atomic::Lambda(Box::new(Lambda {
+                    param,
                     cont: None,
                     body: Complex::Let(Box::new(Let {
                         symbol: binding.symbol,
-                        value: Atomic::Var(p),
+                        value: Atomic::Var(param),
                         expr: t(&binding.expr, cont)
                     }))
-                }))
+                })))
             )
         }
         ast::ExprVal::Apply(application) => {
             let target = CpsSymbol::Gen(GEN_PROVIDER.next());
             let arg = CpsSymbol::Gen(GEN_PROVIDER.next());
+            let cont = match cont {
+                ConversionContinuation::Continuable(cont) => cont,
+                ConversionContinuation::Assign => {
+                    let param = CpsSymbol::Gen(GEN_PROVIDER.next());
+                    Atomic::Lambda(Box::new(Lambda {
+                        param: param,
+                        cont: None,
+                        body: Complex::Return(Atomic::Var(param))
+                    }))
+                }
+            };
             t(
                 &application.target,
-                Atomic::Lambda(Box::new(Lambda {
+                ConversionContinuation::Continuable(Atomic::Lambda(Box::new(Lambda {
                     param: target,
                     cont: None,
                     body: t(
                         &application.arg,
-                        Atomic::Lambda(Box::new(Lambda {
+                        ConversionContinuation::Continuable(Atomic::Lambda(Box::new(Lambda {
                             param: arg,
                             cont: None,
                             body: Complex::Call(
-                                Target::Expr(Atomic::Var(target)),
+                                Atomic::Var(target),
                                 Atomic::Var(arg),
                                 Some(cont)
                             )
-                        }))
+                        })))
                     )
-                }))
+                })))
             )
         }
         ast::ExprVal::If(if_else) => {
             let condition = CpsSymbol::Gen(GEN_PROVIDER.next());
             t(
                 &if_else.condition,
-                Atomic::Lambda(Box::new(Lambda {
+                ConversionContinuation::Continuable(Atomic::Lambda(Box::new(Lambda {
                     param: condition,
                     cont: None,
                     body: Complex::If(Box::new(IfElse {
@@ -182,10 +194,13 @@ fn t(e@ast::Expr(expr, _, _): &ast::Expr<Typed>, cont: Atomic) -> Complex {
                         if_true: t(&if_else.if_true, cont.clone()),
                         if_false: t(&if_else.if_false, cont)
                     }))
-                }))
+                })))
             )
         }
-        _ => Complex::Call(Target::Expr(cont), m(e), None)
+        _ => match cont {
+            ConversionContinuation::Continuable(cont) => Complex::Call(cont, m(e), None),
+            ConversionContinuation::Assign => Complex::Return(m(e))
+        }
     }
 }
 
@@ -201,13 +216,11 @@ pub fn transform_cps(ast: &ast::Ast<Typed>) -> Cps {
     for item in &ast.root().0 {
         let ast::ItemVal::Binding(binding) = &item.0;
 
-        let cont = CONTINUATION_PROVIDER.next();
         let symbol = binding.symbol;
 
         bindings.insert(symbol, Binding {
             symbol: symbol,
-            cont,
-            value: t(&binding.body, Atomic::Cont(cont))
+            value: t(&binding.body, ConversionContinuation::Assign)
         });
     }
 
