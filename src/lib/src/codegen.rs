@@ -123,7 +123,7 @@ impl Codegen {
                 write!(self, "{x}")?;
             }
             Atomic::String(s) => {
-                write!(self, "{s}")?;
+                write!(self, "\"{s}\"")?;
             }
             Atomic::Var(symbol) => {
                 let name = self.name(*symbol).to_owned();

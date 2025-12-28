@@ -3,7 +3,7 @@
 - [x] Type-checking + inference
 - [x] CPS conversion + JS codegen
 - [ ] Compiler CLI
-- [ ] Parsing string expressions
+- [x] Parsing string expressions
 - [ ] Symbol resolution and type checking errors
 - [ ] Typed symbol IDs
 - [ ] Top-level binding reference graph

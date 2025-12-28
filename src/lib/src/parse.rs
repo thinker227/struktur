@@ -15,6 +15,12 @@ pub enum ParseError {
         char_span: TextSpan,
     },
 
+    #[error("Unterminated string literal")]
+    UnterminatedString {
+        #[label]
+        string_span: TextSpan,
+    },
+
     #[error("Only ASCII space characters are allowed as indentation")]
     IllegalIndentation {
         #[label("This whitespace character is not allowed as indentation")]
@@ -290,7 +296,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                 (ExprVal::Bool(val), bool.span)
             }
 
-            TokenKind::_String => {
+            TokenKind::String => {
                 let str = self.advance();
                 let text = str.text;
                 let val = text[1 .. text.len() - 1].to_owned();

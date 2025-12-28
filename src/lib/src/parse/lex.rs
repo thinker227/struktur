@@ -1,4 +1,4 @@
-use std::{fmt::Display, ops::{Add, ControlFlow, FromResidual, Try}};
+use std::{fmt::Display, ops::{Add, AddAssign, ControlFlow, FromResidual, Try}};
 
 use crate::{parse::ParseError, text_span::TextSpan};
 
@@ -40,7 +40,7 @@ pub enum TokenKind {
     Else,
     Name,
     Number,
-    _String,
+    String,
     EndOfInput,
 }
 
@@ -63,7 +63,7 @@ impl TokenKind {
             Else => Some("else"),
             Name => None,
             Number => None,
-            _String => None,
+            String => None,
             EndOfInput => None,
         }
     }
@@ -73,7 +73,7 @@ impl TokenKind {
         match self {
             Name => "name",
             Number => "number",
-            _String => "string",
+            String => "string",
             EndOfInput => "end of input",
 
             _ => self.static_source().unwrap()
@@ -154,6 +154,13 @@ impl Add for StrLen {
             chars: self.chars + rhs.chars,
             bytes: self.bytes + rhs.bytes
         }
+    }
+}
+
+impl AddAssign for StrLen {
+    fn add_assign(&mut self, rhs: Self) {
+        self.chars += rhs.chars;
+        self.bytes += rhs.bytes;
     }
 }
 
@@ -271,6 +278,11 @@ impl<'src> Lexer<'src> {
             return LexResult::Ok(());
         }
 
+        if let Some(len) = self.string()? {
+            self.push_token(PartialToken { chars: len.chars, kind: TokenKind::String })?;
+            return LexResult::Ok(());
+        }
+
         if let Some((len, kind)) = self.symbol() {
             self.push_token(PartialToken { chars: len.chars, kind })?;
             return LexResult::Ok(());
@@ -302,6 +314,53 @@ impl<'src> Lexer<'src> {
     fn number(&self) -> LexResult<Option<StrLen>> {
         let number_length = self.leading(|c| c.is_ascii_digit());
         LexResult::Ok((number_length.chars > 0).then_some(number_length))
+    }
+
+    fn string(&self) -> LexResult<Option<StrLen>> {
+        let mut chars = self.source.chars();
+
+        if chars.next() != Some('"') {
+            return LexResult::Ok(None);
+        }
+
+        let mut len = StrLen { chars: 1, bytes: 1 };
+
+        loop {
+            let c = match chars.next() {
+                Some('\n') | None => return LexResult::Err(ParseError::UnterminatedString {
+                    string_span: TextSpan::new(self.offset, len.bytes)
+                }),
+                Some(c) => c
+            };
+
+            len += StrLen { chars: 1, bytes: c.len_utf8() };
+
+            if c == '"' {
+                break;
+            }
+        }
+
+        LexResult::Ok(Some(len))
+
+        // enum State { Start, Inside, End }
+
+        // let mut state = State::Start;
+        // let string_length = self.leading(|c| {
+        //     match state {
+        //         State::Start if c == '"' => {
+        //             state = State::Inside;
+        //             true
+        //         }
+        //         State::Inside if c == '"' => {
+        //             state = State::End;
+        //             true
+        //         }
+        //         State::Inside => true,
+        //         State::End | _ => false
+        //     }
+        // });
+
+        // LexResult::Ok((string_length.chars > 0).then_some(string_length))
     }
 
     fn symbol(&self) -> Option<(StrLen, TokenKind)> {
