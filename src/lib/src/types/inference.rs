@@ -590,7 +590,7 @@ impl Embedder {
 
             ExprVal::Bind(binding) => ExprVal::bind(Let {
                 symbol: binding.symbol,
-                value: self.expr(&binding.expr),
+                value: self.expr(&binding.value),
                 expr: self.expr(&binding.expr)
             }),
 
