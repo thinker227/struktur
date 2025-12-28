@@ -1,0 +1,13 @@
+- [x] Parser
+- [x] Symbol resolution
+- [x] Type-checking + inference
+- [x] CPS conversion + JS codegen
+- [ ] Compiler CLI
+- [ ] Parsing string expressions
+- [ ] Symbol resolution and type checking errors
+- [ ] Typed symbol IDs
+- [ ] Top-level binding reference graph
+- [ ] Main function
+- [ ] Algebraic data types
+- [ ] Typeclasses
+- [ ] Algebraic effects
