@@ -2,7 +2,7 @@
 - [x] Symbol resolution
 - [x] Type-checking + inference
 - [x] CPS conversion + JS codegen
-- [ ] Compiler CLI
+- [x] Compiler CLI
 - [x] Parsing string expressions
 - [ ] Symbol resolution and type checking errors
 - [ ] Typed symbol IDs
