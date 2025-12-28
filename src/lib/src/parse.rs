@@ -199,12 +199,12 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     }
 
     fn parse_binding(&mut self) -> ParseResult<(Binding<Parse>, TextSpan)> {
-        self.expect(TokenKind::Let)?;
+        let r#let = self.expect(TokenKind::Let)?;
         let name = self.expect(TokenKind::Name)?;
         self.expect(TokenKind::Equals)?;
         let body = self.parse_expr()?;
 
-        let span = TextSpan::between(name.span, body.2.data);
+        let span = TextSpan::between(r#let.span, body.2.data);
 
         Ok((
             Binding {
