@@ -1,3 +1,7 @@
+// Prevent warnings about Miette diagnostic fields never being read.
+// See https://github.com/rust-lang/rust/issues/147648
+#![allow(unused_assignments)]
+
 //! Lexing and parsing source code into an initial AST.
 
 mod lex;
@@ -21,22 +25,6 @@ pub enum ParseError {
         string_span: TextSpan,
     },
 
-    #[error("Only ASCII space characters are allowed as indentation")]
-    IllegalIndentation {
-        #[label("This whitespace character is not allowed as indentation")]
-        char_span: TextSpan,
-    },
-
-    #[error("Indentation of {indentation} character(s) does not match that of any block")]
-    InconsistentIndentation {
-        indentation: usize,
-        #[label]
-        indent_span: TextSpan,
-        #[related]
-        blocks: Vec<IndentationHint>,
-    },
-
-    // #[error("Found {found} token in {context}, expected {expected}")]
     #[error("Found {found} token, expected {expected}")]
     UnexpectedToken {
         #[label]
@@ -58,15 +46,6 @@ impl ParseError {
             expected: expected.to_string()
         }
     }
-}
-
-#[derive(Debug, Clone, thiserror::Error, miette::Diagnostic)]
-#[error("Block with {indentation} indentation character(s) starts here")]
-#[diagnostic(severity(advice))]
-pub struct IndentationHint {
-    indentation: usize,
-    #[label]
-    span: TextSpan,
 }
 
 type ParseResult<T> = Result<T, ParseError>;
