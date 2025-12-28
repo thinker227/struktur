@@ -1,7 +1,7 @@
 use std::{env, fs, io::Write as _, path::{self, PathBuf}, process::ExitCode};
 
 use clap::Parser;
-use struktur::{ast, codegen::emit, cps::transform_cps, parse::parse, symbols::{self, resolve_symbols}, types::{pretty_print::pretty_print, type_check}};
+use struktur::{ast::{self, Ast}, codegen::emit, cps::transform_cps, error::CompileError, parse::parse, stage::Typed, symbols::{self, resolve_symbols}, types::{pretty_print::pretty_print, type_check}};
 use miette::{NamedSource, Report};
 
 #[derive(Debug, Parser)]
@@ -71,23 +71,19 @@ fn main() -> Result<ExitCode, anyhow::Error> {
         text
     );
 
-    let parsed = match parse(source.inner()) {
-        Ok(x) => x,
+    let ast = match compile(&source) {
+        Ok(ast) => ast,
         Err(e) => {
             println!("{:?}", Report::from(e).with_source_code(source));
             return Ok(ExitCode::FAILURE);
         }
     };
 
-    let sem = resolve_symbols(&parsed);
-
-    let typed = type_check(&sem);
-
     if args.types {
-        for item in &typed.root().0 {
+        for item in &ast.root().0 {
             match &item.0 {
                 ast::ItemVal::Binding(binding) => {
-                    let symbol = match typed.symbols().get(binding.symbol) {
+                    let symbol = match ast.symbols().get(binding.symbol) {
                         symbols::SymbolData::Func(symbol) => symbol,
                         _ => unreachable!()
                     };
@@ -106,7 +102,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    let cps = transform_cps(&typed);
+    let cps = transform_cps(&ast);
 
     if args.cps {
         println!("{cps:#?}");
@@ -123,4 +119,12 @@ fn main() -> Result<ExitCode, anyhow::Error> {
     out_file.write_all(out.as_bytes())?;
 
     Ok(ExitCode::SUCCESS)
+}
+
+fn compile(source: &NamedSource<String>) -> Result<Ast<Typed>, CompileError> {
+    let parsed = parse(source.inner())?;
+    let sem = resolve_symbols(&parsed)?;
+    let typed = type_check(&sem)?;
+
+    Ok(typed)
 }

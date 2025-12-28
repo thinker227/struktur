@@ -1,3 +1,5 @@
+#![allow(unused_assignments)]
+
 //! Type checking and inference.
 //!
 //! The algorithm used for type inference is [Algorithm-J](https://en.wikipedia.org/wiki/Hindley-Milner_type_system#Algorithm_J),
@@ -12,8 +14,34 @@ use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedExprData, TypedBindingData, TypedVariableData}};
+use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrintCtx, pretty_print_with}}};
 use self::var::MetaVar;
+
+/*--------*\
+|  Errors  |
+\*--------*/
+
+/// An error produced by type checking.
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+pub enum TypeCheckError {
+    #[error("Cannot unify types `{a:?}` and `{b:?}`")]
+    IncompatibleTypes {
+        #[label]
+        span: TextSpan,
+        a: InferType,
+        b: InferType,
+    },
+
+    #[error("cannot construct infinite type `{var:?} ~ {ty:?}`")]
+    OccursCheck {
+        #[label]
+        span: TextSpan,
+        var: MetaVar,
+        ty: InferType,
+    },
+}
+
+type InferResult<T> = Result<T, TypeCheckError>;
 
 /*----------------------*\
 |  Type representations  |
@@ -254,7 +282,7 @@ fn lower(ty: &InferType, level: usize) {
 }
 
 /// Attempts to unify two types.
-fn unify(a: &InferType, b: &InferType, level: usize) {
+fn unify(a: &InferType, b: &InferType, level: usize) -> InferResult<()> {
     match (a, b) {
         // Unifying a meta variable with itself does nothing.
         (
@@ -277,15 +305,15 @@ fn unify(a: &InferType, b: &InferType, level: usize) {
             InferType::Type(MonoType::Function(a)),
             InferType::Type(MonoType::Function(b))
         ) => {
-            unify(&a.param, &b.param, level);
-            unify(&a.ret, &b.ret, level);
+            unify(&a.param, &b.param, level)?;
+            unify(&a.ret, &b.ret, level)?;
         }
 
         // Unify through solved meta variables.
         (InferType::Var(var), ty) if let Some(sub) = var.get_sub() =>
-            unify(sub, ty, level),
+            unify(sub, ty, level)?,
         (ty, InferType::Var(var)) if let Some(sub) = var.get_sub() =>
-            unify(ty, sub, level),
+            unify(ty, sub, level)?,
 
         (InferType::Var(var), ty) |
         (ty, InferType::Var(var)) =>
@@ -307,6 +335,8 @@ fn unify(a: &InferType, b: &InferType, level: usize) {
 
         _ => panic!("cannot unify {a:?} and {b:?}")
     }
+
+    Ok(())
 }
 
 /// Replaces any unsolved unification variables with type variables within a forall generalization.
@@ -353,7 +383,7 @@ fn generalize(ctx: &Context, ty: InferType) -> Result<Forall<InferType>, InferTy
 }
 
 /// Infers the type of an expression and adds it to the context.
-fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferType {
+fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<InferType> {
     let ty: InferType = match expr {
         // Primitives are just their respective types.
         ExprVal::Unit => InferType::Type(MonoType::Primitive(Primitive::Unit)),
@@ -373,7 +403,7 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferType {
             // Infer the type of the value assigned to the binding using a forall level one higher than before.
             // This ensures that unsolved meta variables within the binding properly become type variables
             // in a forall generalization.
-            let val_ty = infer(&ctx.extend(), &binding.value);
+            let val_ty = infer(&ctx.extend(), &binding.value)?;
 
             // Try to generalize the type. Since let-bindings cannot have forward-declarations,
             // it is guaranteed that all meta variables within the binding are in their final solved/unsolved
@@ -385,7 +415,7 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferType {
             ctx.add_symbol_ty(binding.symbol, general).unwrap();
 
             // Now that we have the type of the binding in the context, we can infer the return expression.
-            infer(ctx, &binding.expr)
+            infer(ctx, &binding.expr)?
         }
 
         ExprVal::Lambda(lambda) => {
@@ -394,14 +424,14 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferType {
             let param_ty = InferType::Var(ctx.fresh_meta());
             ctx.add_symbol_ty(lambda.param, PolyType::Type(param_ty.clone())).unwrap();
 
-            let ret_ty = infer(ctx, &lambda.body);
+            let ret_ty = infer(ctx, &lambda.body)?;
 
             InferType::Type(MonoType::function(param_ty, ret_ty))
         }
 
         ExprVal::Apply(app) => {
-            let target_ty = infer(ctx, &app.target);
-            let arg_ty = infer(ctx, &app.arg);
+            let target_ty = infer(ctx, &app.target)?;
+            let arg_ty = infer(ctx, &app.arg)?;
             let ret_ty = InferType::Var(ctx.fresh_meta());
 
             // The target of an application should always be a function,
@@ -413,23 +443,23 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferType {
                     ret_ty.clone()
                 )),
                 ctx.forall_level
-            );
+            )?;
 
             ret_ty
         }
 
         ExprVal::If(if_else) => {
-            let condition_ty = infer(ctx, &if_else.condition);
-            let if_true_ty = infer(ctx, &if_else.if_true);
-            let if_false_ty = infer(ctx, &if_else.if_false);
+            let condition_ty = infer(ctx, &if_else.condition)?;
+            let if_true_ty = infer(ctx, &if_else.if_true)?;
+            let if_false_ty = infer(ctx, &if_else.if_false)?;
 
             unify(
                 &condition_ty,
                 &InferType::Type(MonoType::Primitive(Primitive::Bool)),
                 ctx.forall_level
-            );
+            )?;
 
-            unify(&if_true_ty, &if_false_ty, ctx.forall_level);
+            unify(&if_true_ty, &if_false_ty, ctx.forall_level)?;
 
             if_true_ty.clone()
         }
@@ -437,7 +467,7 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferType {
 
     ctx.add_expr_ty(node_data.id, ty.clone()).unwrap();
 
-    ty
+    Ok(ty)
 }
 
 /// Prunes away all the unification variables from a type.
@@ -626,7 +656,7 @@ impl Embedder {
 \*--------------------*/
 
 /// Performs type checking and type inference on all the expressions and bindings of an AST.
-pub fn type_check(ast: &Ast<Sem>) -> Ast<Typed> {
+pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
     // Fetch the reference graph for the tree and compute the strongly-connected components.
     // This is used to know what groups of top-levels bindings need to be inferred together
     // so that unification variables won't unnecessarily leak from one binding into another.
@@ -663,14 +693,14 @@ pub fn type_check(ast: &Ast<Sem>) -> Ast<Typed> {
 
             let ctx = ctx.extend();
 
-            let body_ty = infer(&ctx, &binding.body);
+            let body_ty = infer(&ctx, &binding.body)?;
 
             let binding_var = binding_vars.get(item).unwrap().clone();
 
             // Important that the level here is 1,
             // since unification variables declared at the top-level
             // would otherwise not be able to have their levels lowerd properly.
-            unify(&body_ty, &InferType::Var(binding_var), 1);
+            unify(&body_ty, &InferType::Var(binding_var), 1)?;
         }
 
         // Try to generalize the binding types.
@@ -691,7 +721,7 @@ pub fn type_check(ast: &Ast<Sem>) -> Ast<Typed> {
         expr_types,
         symbol_types
     };
-    embedder.ast(ast)
+    Ok(embedder.ast(ast))
 }
 
 #[cfg(test)]

@@ -1,3 +1,5 @@
+#![allow(unused_assignments)]
+
 //! Symbols and semantic resolution.
 
 use std::collections::HashMap;
@@ -8,6 +10,7 @@ use derivative::Derivative;
 use crate::id::{Id, IdProvider};
 use crate::stage::{Parse, Sem, Stage};
 use crate::ast::*;
+use crate::text_span::TextSpan;
 
 /// A reference to a symbol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -140,43 +143,66 @@ impl<S: Stage> Symbols<S> {
 }
 
 /// Resolves all the symbols of an AST.
-pub fn resolve_symbols(ast: &Ast<Parse>) -> Ast<Sem> {
-    let mut resolver = Resolver::new();
+pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
+    let mut resolver = Resolver::new(ast);
 
-    let sem_root = resolver.root(ast.root());
+    let sem_root = resolver.root(ast.root())?;
     let symbols = resolver.symbols;
 
-    Ast::new(sem_root, symbols, ())
+    Ok(Ast::new(sem_root, symbols, ()))
 }
 
-struct Resolver {
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+pub enum SymbolResError {
+    #[error("A symbol with the name `{name}` has already been declared in this scope")]
+    DuplicateDeclaration {
+        #[label]
+        span: TextSpan,
+        name: String,
+        #[label("Previously declared here")]
+        previous_declaration: TextSpan,
+    },
+
+    #[error("No symbol with the name `{name}` is available in this scope")]
+    Undeclared {
+        #[label]
+        span: TextSpan,
+        name: String,
+    },
+}
+
+type SymResult<T> = Result<T, SymbolResError>;
+
+struct Resolver<'ast> {
     scopes: Vec<HashMap<String, Symbol>>,
     symbols: Symbols<Sem>,
+    ast: &'ast Ast<Parse>,
 }
 
-impl Resolver {
-    fn new() -> Self {
+impl<'ast> Resolver<'ast> {
+    fn new(ast: &'ast Ast<Parse>) -> Self {
         Self {
             scopes: vec![HashMap::new()],
-            symbols: Symbols::new()
+            symbols: Symbols::new(),
+            ast
         }
     }
 
-    fn in_scope<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+    fn in_scope<R>(&mut self, f: impl FnOnce(&mut Self) -> SymResult<R>) -> SymResult<R> {
         self.scopes.push(HashMap::new());
         let res = f(self);
         self.scopes.pop();
         res
     }
 
-    fn register(&mut self, name: String, data: SymbolData<Sem>) -> Result<Symbol, SymbolData<Sem>> {
-        let Resolver { scopes, symbols } = self;
+    fn register(&mut self, name: String, data: SymbolData<Sem>) -> Result<Symbol, Symbol> {
+        let Resolver { scopes, symbols, .. } = self;
 
         let scope = scopes.last_mut()
             .expect("there should always be a scope");
 
         match scope.entry(name) {
-            Entry::Occupied(_) => Err(data),
+            Entry::Occupied(entry) => Err(*entry.get()),
             Entry::Vacant(entry) => {
                 let symbol = symbols.register(data);
                 entry.insert(symbol);
@@ -195,24 +221,24 @@ impl Resolver {
         None
     }
 
-    fn root(&mut self, Root(items, node_data): &Root<Parse>) -> Root<Sem> {
+    fn root(&mut self, Root(items, node_data): &Root<Parse>) -> SymResult<Root<Sem>> {
         // Forward refs
         let mut symbols = Vec::new();
         for item in items {
-            let symbol = self.register_item(item);
+            let symbol = self.register_item(item)?;
             symbols.push(symbol);
         }
 
         let mut sem_items = Vec::new();
         for (item, symbol) in items.iter().zip(symbols) {
-            let sem_item = self.item(item, symbol);
+            let sem_item = self.item(item, symbol)?;
             sem_items.push(sem_item);
         }
 
-        Root(sem_items, node_data.clone().into_stage())
+        Ok(Root(sem_items, node_data.clone().into_stage()))
     }
 
-    fn register_item(&mut self, Item(item, node_data): &Item<Parse>) -> Symbol {
+    fn register_item(&mut self, Item(item, node_data): &Item<Parse>) -> SymResult<Symbol> {
         let data = match item {
             ItemVal::Binding(function) => {
                 SymbolData::Func(FunctionData {
@@ -222,37 +248,45 @@ impl Resolver {
                 })
             }
         };
+        let name = data.name().clone();
 
-        self.register(data.name().clone(), data)
-            .map_err(|d| format!("duplicate item `{}`", d.name()))
-            .unwrap()
+        self.register(name.clone(), data)
+            .map_err(|prev| {
+                let prev = self.symbols.get(prev).decl();
+                let prev_span = *self.ast.get_node(prev).data();
+                SymbolResError::DuplicateDeclaration {
+                    span: node_data.data,
+                    name,
+                    previous_declaration: prev_span
+                }
+            })
     }
 
-    fn item(&mut self, Item(item, node_data): &Item<Parse>, symbol: Symbol) -> Item<Sem> {
+    fn item(&mut self, Item(item, node_data): &Item<Parse>, symbol: Symbol) -> SymResult<Item<Sem>> {
         let val = match item {
             ItemVal::Binding(function) => {
-                let sem_function = self.function(function, node_data, symbol);
+                let sem_function = self.function(function, node_data, symbol)?;
                 ItemVal::Binding(sem_function)
             }
         };
 
-        Item(val, node_data.clone().into_stage())
+        Ok(Item(val, node_data.clone().into_stage()))
     }
 
-    fn function(&mut self, function: &Binding<Parse>, _: &NodeData<Parse>, function_symbol: Symbol) -> Binding<Sem> {
+    fn function(&mut self, function: &Binding<Parse>, _: &NodeData<Parse>, function_symbol: Symbol) -> SymResult<Binding<Sem>> {
         let sem_body = self.in_scope(|this| {
             // This technically doesn't need a scope,
             // but it's nice just to ensure that symbols don't accidentally leak out.
             this.expr(&function.body)
-        });
+        })?;
 
-        Binding {
+        Ok(Binding {
             body: sem_body,
             symbol: function_symbol
-        }
+        })
     }
 
-    fn expr(&mut self, Expr(expr, _, node_data): &Expr<Parse>) -> Expr<Sem> {
+    fn expr(&mut self, Expr(expr, _, node_data): &Expr<Parse>) -> SymResult<Expr<Sem>> {
         let val = match expr {
             ExprVal::Unit => ExprVal::Unit,
 
@@ -264,14 +298,16 @@ impl Resolver {
 
             ExprVal::Var(var_name) => {
                 let var_symbol = self.look_up(var_name)
-                    .ok_or_else(|| format!("no variable `{}`", var_name))
-                    .unwrap();
+                    .ok_or_else(|| SymbolResError::Undeclared {
+                        span: TextSpan::empty(0),
+                        name: var_name.clone()
+                    })?;
 
                 ExprVal::Var(var_symbol)
             }
 
             ExprVal::Bind(binding) => {
-                let sem_value = self.expr(&binding.value);
+                let sem_value = self.expr(&binding.value)?;
 
                 let (symbol, sem_expr) = self.in_scope(|this| {
                     let var_data = VariableData {
@@ -282,10 +318,10 @@ impl Resolver {
 
                     let var_symbol = this.register(binding.symbol.clone(), SymbolData::Var(var_data)).unwrap();
 
-                    let sem_expr = this.expr(&binding.expr);
+                    let sem_expr = this.expr(&binding.expr)?;
 
-                    (var_symbol, sem_expr)
-                });
+                    Ok((var_symbol, sem_expr))
+                })?;
 
                 ExprVal::bind(Let {
                     symbol,
@@ -304,10 +340,10 @@ impl Resolver {
 
                     let param_symbol = this.register(lambda.param.clone(), SymbolData::Var(param_data)).unwrap();
 
-                    let sem_body = this.expr(&lambda.body);
+                    let sem_body = this.expr(&lambda.body)?;
 
-                    (param_symbol, sem_body)
-                });
+                    Ok((param_symbol, sem_body))
+                })?;
 
                 ExprVal::lambda(Lambda {
                     param: param_symbol ,
@@ -316,8 +352,8 @@ impl Resolver {
             }
 
             ExprVal::Apply(application) => {
-                let sem_target = self.expr(&application.target);
-                let sem_arg = self.expr(&application.arg);
+                let sem_target = self.expr(&application.target)?;
+                let sem_arg = self.expr(&application.arg)?;
 
                 ExprVal::apply(Application {
                     target: sem_target,
@@ -326,9 +362,9 @@ impl Resolver {
             }
 
             ExprVal::If(if_else) => {
-                let sem_condition = self.expr(&if_else.condition);
-                let sem_if_true = self.expr(&if_else.if_true);
-                let sem_if_false = self.expr(&if_else.if_false);
+                let sem_condition = self.expr(&if_else.condition)?;
+                let sem_if_true = self.expr(&if_else.if_true)?;
+                let sem_if_false = self.expr(&if_else.if_false)?;
 
                 ExprVal::if_else(IfElse {
                     condition: sem_condition,
@@ -338,6 +374,6 @@ impl Resolver {
             }
         };
 
-        Expr(val, (), node_data.clone().into_stage())
+        Ok(Expr(val, (), node_data.clone().into_stage()))
     }
 }

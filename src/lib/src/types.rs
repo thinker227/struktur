@@ -10,7 +10,7 @@ use derivative::Derivative;
 
 use crate::id::Id;
 
-pub use self::inference::type_check;
+pub use self::inference::{TypeCheckError, type_check};
 
 /// The representation of a type.
 ///
