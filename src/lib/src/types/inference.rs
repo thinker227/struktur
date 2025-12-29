@@ -14,7 +14,7 @@ use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx}}};
+use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}};
 
 pub use self::var::MetaVar;
 
@@ -25,20 +25,18 @@ pub use self::var::MetaVar;
 /// An error produced by type checking.
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum TypeCheckError {
-    #[error("Cannot unify types `{a:?}` and `{b:?}`")]
+    // TODO: Add spans for these errors.
+
+    #[error("Cannot unify types `{a}` and `{b}`")]
     IncompatibleTypes {
-        #[label]
-        span: TextSpan,
-        a: InferType,
-        b: InferType,
+        a: String,
+        b: String,
     },
 
-    #[error("cannot construct infinite type `{var:?} ~ {ty:?}`")]
+    #[error("Cannot construct infinite type from constraint `{var}` = `{ty}`")]
     OccursCheck {
-        #[label]
-        span: TextSpan,
-        var: MetaVar,
-        ty: InferType,
+        var: String,
+        ty: String,
     },
 }
 
@@ -332,7 +330,11 @@ fn unify(a: &InferType, b: &InferType, level: usize) -> InferResult<()> {
             Some(_) => unreachable!(),
             None => {
                 if occurs(var, ty) {
-                    panic!("{var:?} occurs within {ty:?}");
+                    let mut ctx = PrintCtx::new();
+                    return Err(TypeCheckError::OccursCheck {
+                        var: pretty_print_with(var, &mut ctx),
+                        ty: pretty_print_with(ty, &mut ctx)
+                    });
                 }
 
                 lower(ty, level);
@@ -343,7 +345,13 @@ fn unify(a: &InferType, b: &InferType, level: usize) -> InferResult<()> {
             }
         }
 
-        _ => panic!("cannot unify {a:?} and {b:?}")
+        _ => {
+            let mut ctx = PrintCtx::new();
+            return Err(TypeCheckError::IncompatibleTypes {
+                a: pretty_print_with(a, &mut ctx),
+                b: pretty_print_with(b, &mut ctx)
+            })
+        }
     }
 
     Ok(())
