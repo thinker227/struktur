@@ -3,16 +3,18 @@ use std::{char, collections::hash_map::HashMap, fmt::Write};
 use crate::types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, TypeVar};
 
 pub fn pretty_print<P: PrettyPrint>(val: &P) -> String {
-    let mut ctx = PrintCtx {
-        var_names: HashMap::new(),
-        buf: String::new()
-    };
-    val.pretty_print(&mut ctx).unwrap();
-    ctx.buf
+    let mut ctx = PrintCtx::new();
+    pretty_print_with(val, &mut ctx)
+}
+
+pub fn pretty_print_with<P: PrettyPrint>(val: &P, ctx: &mut PrintCtx) -> String {
+    let mut buf = String::new();
+    val.pretty_print(&mut buf, ctx).unwrap();
+    buf
 }
 
 pub trait PrettyPrint {
-    fn pretty_print(&self, ctx: &mut PrintCtx) -> std::fmt::Result;
+    fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result;
 
     fn is_trivial(&self) -> bool {
         true
@@ -21,23 +23,23 @@ pub trait PrettyPrint {
 
 pub struct PrintCtx {
     var_names: HashMap<TypeVar, String>,
-    buf: String,
 }
 
-impl Write for PrintCtx {
-    fn write_str(&mut self, s: &str) -> std::fmt::Result {
-        self.buf.push_str(s);
-        Ok(())
+impl PrintCtx {
+    pub fn new() -> Self {
+        Self {
+            var_names: HashMap::new()
+        }
     }
 }
 
 impl PrettyPrint for Primitive {
-    fn pretty_print(&self, ctx: &mut PrintCtx) -> std::fmt::Result {
+    fn pretty_print(&self, buf: &mut String, _ctx: &mut PrintCtx) -> std::fmt::Result {
         match self {
-            Primitive::Unit => write!(ctx, "()"),
-            Primitive::Int => write!(ctx, "Int"),
-            Primitive::Bool => write!(ctx, "Bool"),
-            Primitive::String => write!(ctx, "String"),
+            Primitive::Unit => write!(buf, "()"),
+            Primitive::Int => write!(buf, "Int"),
+            Primitive::Bool => write!(buf, "Bool"),
+            Primitive::String => write!(buf, "String"),
         }
     }
 }
@@ -57,13 +59,13 @@ fn excel_column_name(mut index: usize) -> String {
 }
 
 impl PrettyPrint for TypeVar {
-    fn pretty_print(&self, ctx: &mut PrintCtx) -> std::fmt::Result {
+    fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
         let next_index = ctx.var_names.len();
         let name = ctx.var_names.entry(*self)
             .or_insert_with(|| excel_column_name(next_index));
 
         // `ctx` is borrowed so have to use `buf` directly
-        write!(ctx.buf, "'{}", name)
+        write!(buf, "'{}", name)
     }
 }
 
@@ -71,11 +73,11 @@ impl PrettyPrint for MonoType<Pruned> {
 // impl<R: Repr> PrettyPrint for MonoType<R>
 // where R::RecTy: PrettyPrint
 // {
-    fn pretty_print(&self, ctx: &mut PrintCtx) -> std::fmt::Result {
+    fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
         match self {
-            MonoType::Primitive(primitive) => primitive.pretty_print(ctx),
-            MonoType::Function(function) => function.pretty_print(ctx),
-            MonoType::Var(var) => var.pretty_print(ctx),
+            MonoType::Primitive(primitive) => primitive.pretty_print(buf, ctx),
+            MonoType::Function(function) => function.pretty_print(buf, ctx),
+            MonoType::Var(var) => var.pretty_print(buf, ctx),
         }
     }
 
@@ -85,43 +87,43 @@ impl PrettyPrint for MonoType<Pruned> {
 }
 
 impl PrettyPrint for FunctionType<Pruned> {
-    fn pretty_print(&self, ctx: &mut PrintCtx) -> std::fmt::Result {
+    fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
         let parens = !self.param.is_trivial();
 
         if parens {
-            write!(ctx, "(")?;
+            write!(buf, "(")?;
         }
-        self.param.pretty_print(ctx)?;
+        self.param.pretty_print(buf, ctx)?;
         if parens {
-            write!(ctx, ")")?;
+            write!(buf, ")")?;
         }
 
-        write!(ctx, " -> ")?;
+        write!(buf, " -> ")?;
 
-        self.ret.pretty_print(ctx)?;
+        self.ret.pretty_print(buf, ctx)?;
 
         Ok(())
     }
 }
 
 impl<Ty: PrettyPrint> PrettyPrint for PolyType<Ty> {
-    fn pretty_print(&self, ctx: &mut PrintCtx) -> std::fmt::Result {
+    fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
         match self {
-            PolyType::Forall(forall) => forall.pretty_print(ctx),
-            PolyType::Type(ty) => ty.pretty_print(ctx),
+            PolyType::Forall(forall) => forall.pretty_print(buf, ctx),
+            PolyType::Type(ty) => ty.pretty_print(buf, ctx),
         }
     }
 }
 
 impl<Ty: PrettyPrint> PrettyPrint for Forall<Ty> {
-    fn pretty_print(&self, ctx: &mut PrintCtx) -> std::fmt::Result {
-        write!(ctx, "∀")?;
+    fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
+        write!(buf, "∀")?;
         for var in &self.vars {
-            write!(ctx, " ")?;
-            var.pretty_print(ctx)?;
+            write!(buf, " ")?;
+            var.pretty_print(buf, ctx)?;
         }
-        write!(ctx, ". ")?;
-        self.target.pretty_print(ctx)?;
+        write!(buf, ". ")?;
+        self.target.pretty_print(buf, ctx)?;
         Ok(())
     }
 }
