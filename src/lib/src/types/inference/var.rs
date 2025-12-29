@@ -1,30 +1,34 @@
-use std::{cell::{Cell, OnceCell}, fmt::Debug, rc::Rc};
+use std::{fmt::Debug, sync::{Arc, OnceLock, atomic::{AtomicUsize, Ordering}}};
 
 use crate::{id::Id, types::inference::InferType};
 
 /// A type variable used for unification.
 #[derive(Clone)]
-pub struct MetaVar(Rc<Inner>);
+pub struct MetaVar(Arc<Inner>);
 
 struct Inner {
     id: Id,
-    level: Cell<usize>,
-    sub: OnceCell<InferType>,
+    // Nothing in the compiler is multi-threaded, but we have to guarantee that type-related stuff is Send+Sync
+    // because Miette requires that diagnostics are, and we want to be able to store types in diagnostics.
+    level: AtomicUsize,
+    sub: OnceLock<InferType>,
 }
 
 impl MetaVar {
     /// Creates a new variable.
     pub fn new(id: Id, level: usize) -> Self {
-        Self(Rc::new(Inner {
+        Self(Arc::new(Inner {
             id,
-            level: Cell::new(level),
-            sub: OnceCell::new()
+            level: AtomicUsize::new(level),
+            sub: OnceLock::new()
         }))
     }
 
     /// Gets the level of the variable.
     pub fn level(&self) -> usize {
-        self.0.level.get()
+        // Not sure if relaxed is technically the right ordering here,
+        // but we're not actually multi-threaded so it doesn't matter.
+        self.0.level.load(Ordering::Relaxed)
     }
 
     /// Attempts to lower the level of the variable.
@@ -33,7 +37,9 @@ impl MetaVar {
     /// so if the level is attempted to be *raised* then this function returns `Err`.
     pub fn try_lower_level(&self, new: usize) -> Result<(), ()> {
         if new < self.level() {
-            self.0.level.set(new);
+            // Not sure if relaxed is technically the right ordering here,
+            // but we're not actually multi-threaded so it doesn't matter.
+            self.0.level.store(new, Ordering::Relaxed);
             Ok(())
         } else {
             Err(())
@@ -63,12 +69,12 @@ impl Debug for MetaVar {
         match self.get_sub() {
             Some(sub) => f.debug_struct("MetaVar")
                 .field("id", &self.0.id)
-                .field("level", &self.0.level.get())
+                .field("level", &self.level())
                 .field("sub", sub)
                 .finish(),
             None => f.debug_struct("MetaVar")
                 .field("id", &self.0.id)
-                .field("level", &self.0.level.get())
+                .field("level", &self.level())
                 .finish_non_exhaustive()
         }
     }

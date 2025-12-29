@@ -5,7 +5,7 @@
 mod inference;
 pub mod pretty_print;
 
-use std::{fmt::Debug, rc::Rc};
+use std::{fmt::Debug, sync::Arc};
 use derivative::Derivative;
 
 use crate::id::Id;
@@ -54,7 +54,7 @@ pub enum MonoType<R: Repr = Pruned> {
     /// A primitive type.
     Primitive(Primitive),
     /// A function from one type to another.
-    Function(Rc<FunctionType<R>>),
+    Function(Arc<FunctionType<R>>),
     /// A type variable introduced by a [`Forall`] generalization, aka. a type parameter.
     Var(TypeVar),
 }
@@ -121,7 +121,7 @@ impl<R: Repr> MonoType<R> {
 
     /// A function from one type to another.
     pub fn function(param: R::RecTy, ret: R::RecTy) -> Self {
-        Self::Function(Rc::new(FunctionType {
+        Self::Function(Arc::new(FunctionType {
             param,
             ret
         }))
@@ -150,7 +150,7 @@ impl<R: Repr> From<Primitive> for MonoType<R> {
 
 impl<R: Repr> From<FunctionType<R>> for MonoType<R> {
     fn from(value: FunctionType<R>) -> Self {
-        Self::Function(Rc::new(value))
+        Self::Function(Arc::new(value))
     }
 }
 
