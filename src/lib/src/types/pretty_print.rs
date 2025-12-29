@@ -1,31 +1,40 @@
+//! Pretty-printing for types.
+
 use std::{char, collections::hash_map::HashMap, fmt::Write};
 
 use crate::types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, TypeVar};
 
+/// Pretty-prints a type.
 pub fn pretty_print<P: PrettyPrint>(val: &P) -> String {
     let mut ctx = PrintCtx::new();
     pretty_print_with(val, &mut ctx)
 }
 
+/// Pretty-prints a type with a shared context.
 pub fn pretty_print_with<P: PrettyPrint>(val: &P, ctx: &mut PrintCtx) -> String {
     let mut buf = String::new();
     val.pretty_print(&mut buf, ctx).unwrap();
     buf
 }
 
+/// Types which can be pretty-printed.
 pub trait PrettyPrint {
+    /// Appends the type to a buffer with a context.
     fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result;
 
+    /// Whether the type is trivial and does not require parentheses in function parameter position.
     fn is_trivial(&self) -> bool {
         true
     }
 }
 
+/// A context for pretty-printing.
 pub struct PrintCtx {
     var_names: HashMap<TypeVar, String>,
 }
 
 impl PrintCtx {
+    /// Creates a new context.
     pub fn new() -> Self {
         Self {
             var_names: HashMap::new()
