@@ -74,8 +74,13 @@ impl Hash for MetaVar {
 
 impl PrettyPrint for MetaVar {
     fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
-        let name = ctx.meta_name(self.clone());
-        write!(buf, "${name}")
+        match self.get_sub() {
+            Some(ty) => ty.pretty_print(buf, ctx),
+            None => {
+                let name = ctx.meta_name(self.clone());
+                write!(buf, "${name}")
+            }
+        }
     }
 }
 
