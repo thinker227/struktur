@@ -8,7 +8,7 @@ pub mod pretty_print;
 use std::{fmt::Debug, sync::Arc};
 use derivative::Derivative;
 
-use crate::id::Id;
+use crate::{id::Id, types::pretty_print::PrettyPrint};
 
 pub use self::inference::{TypeCheckError, type_check};
 
@@ -26,7 +26,7 @@ pub trait Repr {
     /// but types nested within a [`MonoType`] (like function parameters or return types)
     /// might still be or contain type variables,
     /// so this specifies the Rust type for these recursive types.
-    type RecTy: Clone + Debug + PartialEq;
+    type RecTy: Clone + Debug + PartialEq + PrettyPrint;
     // type RecTy: Clone + Debug + PartialEq + Instantiate;
 }
 

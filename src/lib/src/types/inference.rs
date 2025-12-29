@@ -14,8 +14,9 @@ use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrintCtx, pretty_print_with}}};
-use self::var::MetaVar;
+use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx}}};
+
+pub use self::var::MetaVar;
 
 /*--------*\
 |  Errors  |
@@ -62,6 +63,15 @@ enum InferType {
     Type(MonoType<Vars>),
     /// A unification type variable.
     Var(MetaVar),
+}
+
+impl PrettyPrint for InferType {
+    fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
+        match self {
+            InferType::Type(ty) => ty.pretty_print(buf, ctx),
+            InferType::Var(var) => var.pretty_print(buf, ctx)
+        }
+    }
 }
 
 impl From<MonoType<Vars>> for InferType {

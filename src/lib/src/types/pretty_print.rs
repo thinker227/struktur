@@ -2,7 +2,7 @@
 
 use std::{char, collections::hash_map::HashMap, fmt::Write};
 
-use crate::types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, TypeVar};
+use crate::types::{Forall, FunctionType, MonoType, PolyType, Primitive, Repr, TypeVar, inference::MetaVar};
 
 /// Pretty-prints a type.
 pub fn pretty_print<P: PrettyPrint>(val: &P) -> String {
@@ -31,25 +31,28 @@ pub trait PrettyPrint {
 /// A context for pretty-printing.
 pub struct PrintCtx {
     var_names: HashMap<TypeVar, String>,
+    meta_names: HashMap<MetaVar, String>,
 }
 
 impl PrintCtx {
     /// Creates a new context.
     pub fn new() -> Self {
         Self {
-            var_names: HashMap::new()
+            var_names: HashMap::new(),
+            meta_names: HashMap::new(),
         }
     }
-}
 
-impl PrettyPrint for Primitive {
-    fn pretty_print(&self, buf: &mut String, _ctx: &mut PrintCtx) -> std::fmt::Result {
-        match self {
-            Primitive::Unit => write!(buf, "()"),
-            Primitive::Int => write!(buf, "Int"),
-            Primitive::Bool => write!(buf, "Bool"),
-            Primitive::String => write!(buf, "String"),
-        }
+    pub fn var_name(&mut self, var: TypeVar) -> &str {
+        let next_index = self.var_names.len();
+        self.var_names.entry(var)
+            .or_insert_with(|| excel_column_name(next_index))
+    }
+
+    pub(super) fn meta_name(&mut self, var: MetaVar) -> &str {
+        let next_index = self.meta_names.len();
+        self.meta_names.entry(var)
+            .or_insert_with(|| excel_column_name(next_index))
     }
 }
 
@@ -67,21 +70,25 @@ fn excel_column_name(mut index: usize) -> String {
     result
 }
 
-impl PrettyPrint for TypeVar {
-    fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
-        let next_index = ctx.var_names.len();
-        let name = ctx.var_names.entry(*self)
-            .or_insert_with(|| excel_column_name(next_index));
-
-        // `ctx` is borrowed so have to use `buf` directly
-        write!(buf, "'{}", name)
+impl PrettyPrint for Primitive {
+    fn pretty_print(&self, buf: &mut String, _ctx: &mut PrintCtx) -> std::fmt::Result {
+        match self {
+            Primitive::Unit => write!(buf, "()"),
+            Primitive::Int => write!(buf, "Int"),
+            Primitive::Bool => write!(buf, "Bool"),
+            Primitive::String => write!(buf, "String"),
+        }
     }
 }
 
-impl PrettyPrint for MonoType<Pruned> {
-// impl<R: Repr> PrettyPrint for MonoType<R>
-// where R::RecTy: PrettyPrint
-// {
+impl PrettyPrint for TypeVar {
+    fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
+        let name = ctx.var_name(*self);
+        write!(buf, "'{name}")
+    }
+}
+
+impl<R: Repr> PrettyPrint for MonoType<R> {
     fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
         match self {
             MonoType::Primitive(primitive) => primitive.pretty_print(buf, ctx),
@@ -95,7 +102,7 @@ impl PrettyPrint for MonoType<Pruned> {
     }
 }
 
-impl PrettyPrint for FunctionType<Pruned> {
+impl<R: Repr> PrettyPrint for FunctionType<R> {
     fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
         let parens = !self.param.is_trivial();
 

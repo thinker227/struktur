@@ -1,6 +1,6 @@
-use std::{fmt::Debug, sync::{Arc, OnceLock, atomic::{AtomicUsize, Ordering}}};
+use std::{fmt::{Debug, Write as _}, hash::Hash, sync::{Arc, OnceLock, atomic::{AtomicUsize, Ordering}}};
 
-use crate::{id::Id, types::inference::InferType};
+use crate::{id::Id, types::{inference::InferType, pretty_print::{PrettyPrint, PrintCtx}}};
 
 /// A type variable used for unification.
 #[derive(Clone)]
@@ -61,6 +61,21 @@ impl MetaVar {
 impl PartialEq for MetaVar {
     fn eq(&self, other: &Self) -> bool {
         self.0.id == other.0.id
+    }
+}
+
+impl Eq for MetaVar {}
+
+impl Hash for MetaVar {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.id.hash(state);
+    }
+}
+
+impl PrettyPrint for MetaVar {
+    fn pretty_print(&self, buf: &mut String, ctx: &mut PrintCtx) -> std::fmt::Result {
+        let name = ctx.meta_name(self.clone());
+        write!(buf, "${name}")
     }
 }
 
