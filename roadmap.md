@@ -4,7 +4,7 @@
 - [x] CPS conversion + JS codegen
 - [x] Compiler CLI
 - [x] Parsing string expressions
-- [ ] Symbol resolution and type checking errors
+- [x] Symbol resolution and type checking errors
 - [ ] Typed symbol IDs
 - [ ] Top-level binding reference graph
 - [ ] Main function

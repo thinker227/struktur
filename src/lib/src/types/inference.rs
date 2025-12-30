@@ -14,7 +14,7 @@ use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}};
+use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}};
 
 pub use self::var::MetaVar;
 
@@ -25,16 +25,18 @@ pub use self::var::MetaVar;
 /// An error produced by type checking.
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum TypeCheckError {
-    // TODO: Add spans for these errors.
-
     #[error("Cannot unify types `{a}` and `{b}`")]
     IncompatibleTypes {
+        #[label]
+        span: TextSpan,
         a: String,
         b: String,
     },
 
     #[error("Cannot construct infinite type from constraint `{var}` = `{ty}`")]
     OccursCheck {
+        #[label]
+        span: TextSpan,
         var: String,
         ty: String,
     },
@@ -290,7 +292,7 @@ fn lower(ty: &InferType, level: usize) {
 }
 
 /// Attempts to unify two types.
-fn unify(a: &InferType, b: &InferType, level: usize) -> InferResult<()> {
+fn unify(a: &InferType, b: &InferType, level: usize, source: TextSpan) -> InferResult<()> {
     match (a, b) {
         // Unifying a meta variable with itself does nothing.
         (
@@ -313,15 +315,15 @@ fn unify(a: &InferType, b: &InferType, level: usize) -> InferResult<()> {
             InferType::Type(MonoType::Function(a)),
             InferType::Type(MonoType::Function(b))
         ) => {
-            unify(&a.param, &b.param, level)?;
-            unify(&a.ret, &b.ret, level)?;
+            unify(&a.param, &b.param, level, source)?;
+            unify(&a.ret, &b.ret, level, source)?;
         }
 
         // Unify through solved meta variables.
         (InferType::Var(var), ty) if let Some(sub) = var.get_sub() =>
-            unify(sub, ty, level)?,
+            unify(sub, ty, level, source)?,
         (ty, InferType::Var(var)) if let Some(sub) = var.get_sub() =>
-            unify(ty, sub, level)?,
+            unify(ty, sub, level, source)?,
 
         (InferType::Var(var), ty) |
         (ty, InferType::Var(var)) =>
@@ -332,6 +334,7 @@ fn unify(a: &InferType, b: &InferType, level: usize) -> InferResult<()> {
                 if occurs(var, ty) {
                     let mut ctx = PrintCtx::new();
                     return Err(TypeCheckError::OccursCheck {
+                        span: source,
                         var: pretty_print_with(var, &mut ctx),
                         ty: pretty_print_with(ty, &mut ctx)
                     });
@@ -348,6 +351,7 @@ fn unify(a: &InferType, b: &InferType, level: usize) -> InferResult<()> {
         _ => {
             let mut ctx = PrintCtx::new();
             return Err(TypeCheckError::IncompatibleTypes {
+                span: source,
                 a: pretty_print_with(a, &mut ctx),
                 b: pretty_print_with(b, &mut ctx)
             })
@@ -460,7 +464,8 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
                     arg_ty,
                     ret_ty.clone()
                 )),
-                ctx.forall_level
+                ctx.forall_level,
+                app.target.2.data
             )?;
 
             ret_ty
@@ -474,10 +479,19 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
             unify(
                 &condition_ty,
                 &InferType::Type(MonoType::Primitive(Primitive::Bool)),
-                ctx.forall_level
+                ctx.forall_level,
+                if_else.condition.2.data
             )?;
 
-            unify(&if_true_ty, &if_false_ty, ctx.forall_level)?;
+            unify(
+                &if_true_ty,
+                &if_false_ty,
+                ctx.forall_level,
+                TextSpan::between(
+                    if_else.if_true.2.data,
+                    if_else.if_false.2.data
+                )
+            )?;
 
             if_true_ty.clone()
         }
@@ -718,7 +732,7 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
             // Important that the level here is 1,
             // since unification variables declared at the top-level
             // would otherwise not be able to have their levels lowerd properly.
-            unify(&body_ty, &InferType::Var(binding_var), 1)?;
+            unify(&body_ty, &InferType::Var(binding_var), 1, binding.body.2.data)?;
         }
 
         // Try to generalize the binding types.
