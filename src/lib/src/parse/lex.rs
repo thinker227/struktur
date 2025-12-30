@@ -27,6 +27,8 @@ impl Display for Token<'_> {
 pub enum TokenKind {
     Equals,
     Backslash,
+    Bar,
+    Underscore,
     DashGreaterThan,
     OpenParen,
     CloseParen,
@@ -50,6 +52,8 @@ impl TokenKind {
         match self {
             Equals => Some("="),
             Backslash => Some("\\"),
+            Bar => Some("|"),
+            Underscore => Some("_"),
             DashGreaterThan => Some("->"),
             OpenParen => Some("("),
             CloseParen => Some(")"),
@@ -370,6 +374,8 @@ impl<'src> Lexer<'src> {
         if let Some(kind) = match single {
             '=' => Some(Equals),
             '\\' => Some(Backslash),
+            '|' => Some(Bar),
+            '_' => Some(Underscore),
             '(' => Some(OpenParen),
             ')' => Some(CloseParen),
             _ => None

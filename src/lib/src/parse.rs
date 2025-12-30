@@ -125,7 +125,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         prev
     }
 
-    fn _advance_if(&mut self, kind: TokenKind) -> Option<Token<'src>> {
+    fn advance_if(&mut self, kind: TokenKind) -> Option<Token<'src>> {
         if self.current().kind == kind {
             Some(self.advance())
         } else {
@@ -311,7 +311,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
 
     fn parse_let_expr(&mut self) -> ParseResult<(Let<Parse>, TextSpan)> {
         let r#let = self.expect(TokenKind::Let)?;
-        let name = self.expect(TokenKind::Name)?;
+        let pattern = self.parse_pattern()?;
         self.expect(TokenKind::Equals)?;
         let value = self.parse_expr()?;
         self.expect(TokenKind::In)?;
@@ -321,26 +321,9 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
 
         Ok((
             Let {
-                symbol: name.text.to_owned(),
+                pattern,
                 value,
                 expr
-            },
-            span
-        ))
-    }
-
-    fn parse_lambda_expr(&mut self) -> ParseResult<(Lambda<Parse>, TextSpan)> {
-        let fun = self.expect(TokenKind::Fun)?;
-        let param = self.expect(TokenKind::Name)?;
-        self.expect(TokenKind::DashGreaterThan)?;
-        let body = self.parse_expr()?;
-
-        let span = TextSpan::between(fun.span, body.2.data);
-
-        Ok((
-            Lambda {
-                param: param.text.to_owned(),
-                body
             },
             span
         ))
@@ -364,6 +347,86 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             },
             span
         ))
+    }
+
+    fn parse_lambda_expr(&mut self) -> ParseResult<(Lambda<Parse>, TextSpan)> {
+        let fun = self.expect(TokenKind::Fun)?;
+
+        self.advance_if(TokenKind::Bar);
+        let mut cases = vec![self.parse_case()?];
+
+        while self.current().kind == TokenKind::Bar {
+            self.advance();
+            let case = self.parse_case()?;
+            cases.push(case);
+        }
+
+        let span = TextSpan::between(fun.span, cases.last().unwrap().body.2.data);
+
+        Ok((Lambda { cases }, span))
+    }
+
+    fn parse_case(&mut self) -> ParseResult<Case<Parse>> {
+        let pattern = self.parse_pattern()?;
+        self.expect(TokenKind::DashGreaterThan)?;
+        let body = self.parse_expr()?;
+
+        let span = TextSpan::between(pattern.1.data, body.2.data);
+
+        Ok(Case {
+            pattern,
+            body,
+            data: self.node_data(span)
+        })
+    }
+
+    fn parse_pattern(&mut self) -> ParseResult<Pattern<Parse>> {
+        let (pattern, span) = match self.current().kind {
+            TokenKind::Underscore => {
+                let underscore = self.advance();
+                (PatternVal::Wildcard, underscore.span)
+            }
+
+            TokenKind::Name => {
+                let name = self.advance();
+                (PatternVal::Var(name.text.to_owned()), name.span)
+            }
+
+            TokenKind::OpenParen => {
+                let open_paren = self.advance();
+
+                if let Some(close_paren) = self.advance_if(TokenKind::CloseParen) {
+                    (PatternVal::Unit, TextSpan::between(open_paren.span, close_paren.span))
+                } else {
+                    let pattern = self.parse_pattern()?;
+                    self.expect(TokenKind::CloseParen)?;
+                    return Ok(pattern);
+                }
+            }
+
+            TokenKind::Number => {
+                let number = self.advance();
+                let val = number.text.parse().unwrap();
+                (PatternVal::Number(val), number.span)
+            }
+
+            TokenKind::True | TokenKind::False => {
+                let bool = self.advance();
+                let val = bool.kind == TokenKind::True;
+                (PatternVal::Bool(val), bool.span)
+            }
+
+            _ => {
+                let current = self.current();
+                return Err(ParseError::unexpected_token(
+                    current.span,
+                    current.kind,
+                    "pattern"
+                ))
+            }
+        };
+
+        Ok(Pattern(pattern, self.node_data(span)))
     }
 }
 

@@ -155,6 +155,22 @@ impl<S: Stage + 'static> Node for Expr<S> {
     }
 }
 
+impl<S: Stage + 'static> Node for Case<S> {
+    type S = S;
+
+    fn node_data(&self) -> &NodeData<Self::S> {
+        &self.data
+    }
+}
+
+impl<S: Stage + 'static> Node for Pattern<S> {
+    type S = S;
+
+    fn node_data(&self) -> &NodeData<Self::S> {
+        &self.1
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ExprDataBundle<'a, S: Stage>(pub &'a S::ExprData, pub &'a NodeData<S>);
 
@@ -193,12 +209,9 @@ pub trait Visitor {
     fn var_expr(&mut self, symbol: &<Self::S as Stage>::Sym, data: ExprDataBundle<'_, Self::S>) {}
 
     fn bind_expr(&mut self, binding: &Let<Self::S>, data: ExprDataBundle<'_, Self::S>) {
+        self.pattern(&binding.pattern);
         self.expr(&binding.value);
         self.expr(&binding.expr);
-    }
-
-    fn lambda_expr(&mut self, lambda: &Lambda<Self::S>, data: ExprDataBundle<'_, Self::S>) {
-        self.expr(&lambda.body);
     }
 
     fn apply_expr(&mut self, application: &Application<Self::S>, data: ExprDataBundle<'_, Self::S>) {
@@ -211,6 +224,31 @@ pub trait Visitor {
         self.expr(&if_else.if_true);
         self.expr(&if_else.if_false);
     }
+
+    fn lambda_expr(&mut self, lambda: &Lambda<Self::S>, data: ExprDataBundle<'_, Self::S>) {
+        for case in &lambda.cases {
+            self.case(case);
+        }
+    }
+
+    fn case(&mut self, case: &Case<Self::S>) {
+        self.pattern(&case.pattern);
+        self.expr(&case.body);
+    }
+
+    fn pattern(&mut self, pattern: &Pattern<Self::S>) {
+        default_visit_pattern(self, pattern);
+    }
+
+    fn wildcard_pattern(&mut self, data: &NodeData<Self::S>) {}
+
+    fn var_pattern(&mut self, var: &<Self::S as Stage>::Sym, data: &NodeData<Self::S>) {}
+
+    fn unit_pattern(&mut self, data: &NodeData<Self::S>) {}
+
+    fn number_pattern(&mut self, val: u64, data: &NodeData<Self::S>) {}
+
+    fn bool_pattern(&mut self, val: bool, data: &NodeData<Self::S>) {}
 }
 
 pub fn default_visit_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &Expr<V::S>) {
@@ -225,5 +263,16 @@ pub fn default_visit_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &Expr<V::S
         ExprVal::Lambda(lambda) => visitor.lambda_expr(lambda, data),
         ExprVal::Apply(application) => visitor.apply_expr(application, data),
         ExprVal::If(if_else) => visitor.if_else_expr(if_else, data),
+    }
+}
+
+pub fn default_visit_pattern<V: Visitor + ?Sized>(visitor: &mut V, pattern: &Pattern<V::S>) {
+    let data = &pattern.1;
+    match &pattern.0 {
+        PatternVal::Wildcard => visitor.wildcard_pattern(data),
+        PatternVal::Var(var) => visitor.var_pattern(var, data),
+        PatternVal::Unit => visitor.unit_pattern(data),
+        PatternVal::Number(val) => visitor.number_pattern(*val, data),
+        PatternVal::Bool(val) => visitor.bool_pattern(*val, data),
     }
 }

@@ -18,8 +18,18 @@ expr = '(' ')'                 (* Unit *)
      | '(' expr ')'            (* Syntactic grouping *)
      ;
 
-let = 'let' NAME '=' expr 'in' expr ;
-
-lambda = 'fun' NAME '->' expr ;
+let = 'let' pattern '=' expr 'in' expr ;
 
 if = 'if' expr 'then' expr 'else' expr ;
+
+lambda = 'fun' '|'? case ('|' case)* ;
+
+case = pattern '->' expr ;
+
+pattern = '_'                  (* Wildcard *)
+        | NAME                 (* Wildcard variable *)
+        | '(' ')'              (* Unit *)
+        | NUMBER               (* Int *)
+        | 'true' | 'false'     (* Bool *)
+        | '(' pattern ')'      (* Syntactic grouping *)
+        ;
