@@ -8,6 +8,8 @@
 - [ ] Typed symbol IDs
 - [ ] Top-level binding reference graph
 - [ ] Main function
+- [ ] Pattern matching
 - [ ] Algebraic data types
+- [ ] Modules
 - [ ] Typeclasses
 - [ ] Algebraic effects
