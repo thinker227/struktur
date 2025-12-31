@@ -309,45 +309,29 @@ impl<'ast> Resolver<'ast> {
             ExprVal::Bind(binding) => {
                 let sem_value = self.expr(&binding.value)?;
 
-                let (symbol, sem_expr) = self.in_scope(|this| {
-                    let var_data = VariableData {
-                        name: binding.symbol.clone(),
-                        decl: node_data.id,
-                        data: ()
-                    };
-
-                    let var_symbol = this.register(binding.symbol.clone(), SymbolData::Var(var_data)).unwrap();
-
+                let (sem_pattern, sem_expr) = self.in_scope(|this| {
+                    let sem_pattern = this.pattern(&binding.pattern)?;
                     let sem_expr = this.expr(&binding.expr)?;
-
-                    Ok((var_symbol, sem_expr))
+                    Ok((sem_pattern, sem_expr))
                 })?;
 
                 ExprVal::bind(Let {
-                    symbol,
+                    pattern: sem_pattern,
                     value: sem_value,
                     expr: sem_expr
                 })
             }
 
             ExprVal::Lambda(lambda) => {
-                let (param_symbol, sem_body) = self.in_scope(|this| {
-                    let param_data = VariableData {
-                        name: lambda.param.clone(),
-                        decl: node_data.id,
-                        data: ()
-                    };
+                let mut sem_cases = Vec::with_capacity(lambda.cases.len());
 
-                    let param_symbol = this.register(lambda.param.clone(), SymbolData::Var(param_data)).unwrap();
-
-                    let sem_body = this.expr(&lambda.body)?;
-
-                    Ok((param_symbol, sem_body))
-                })?;
+                for case in &lambda.cases {
+                    let sem_case = self.case(case)?;
+                    sem_cases.push(sem_case)
+                }
 
                 ExprVal::lambda(Lambda {
-                    param: param_symbol ,
-                    body: sem_body
+                    cases: sem_cases
                 })
             }
 
@@ -375,5 +359,45 @@ impl<'ast> Resolver<'ast> {
         };
 
         Ok(Expr(val, (), node_data.clone().into_stage()))
+    }
+
+    fn case(&mut self, case: &Case<Parse>) -> SymResult<Case<Sem>> {
+        let (sem_pattern, sem_body) = self.in_scope(|this| {
+            let sem_pattern = this.pattern(&case.pattern)?;
+            let sem_body = this.expr(&case.body)?;
+            Ok((sem_pattern, sem_body))
+        })?;
+
+        Ok(Case {
+            pattern: sem_pattern,
+            body: sem_body,
+            data: case.data.clone().into_stage()
+        })
+    }
+
+    fn pattern(&mut self, Pattern(pattern, node_data): &Pattern<Parse>) -> SymResult<Pattern<Sem>> {
+        let val = match pattern {
+            PatternVal::Wildcard => PatternVal::Wildcard,
+
+            PatternVal::Var(var) => {
+                let var_data = VariableData {
+                    name: var.clone(),
+                    decl: node_data.id,
+                    data: ()
+                };
+
+                let var_symbol = self.register(var.clone(), SymbolData::Var(var_data)).expect("todo");
+
+                PatternVal::Var(var_symbol)
+            }
+
+            PatternVal::Unit => PatternVal::Unit,
+
+            PatternVal::Number(val) => PatternVal::Number(*val),
+
+            PatternVal::Bool(val) => PatternVal::Bool(*val),
+        };
+
+        Ok(Pattern(val, node_data.clone().into_stage()))
     }
 }
