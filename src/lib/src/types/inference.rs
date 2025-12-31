@@ -430,11 +430,30 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
             // Try to generalize the type. Since let-bindings cannot have forward-declarations,
             // it is guaranteed that all meta variables within the binding are in their final solved/unsolved
             // state after the binding's type has been inferred.
-            let general = match generalize(ctx, val_ty) {
-                Ok(forall) => PolyType::Forall(forall),
-                Err(ty) => PolyType::Type(ty)
+            match generalize(ctx, val_ty) {
+                Ok(forall) => match &binding.pattern.0 {
+                    // Wildcard patterns just discard the value.
+                    PatternVal::Wildcard => {}
+
+                    // In case the pattern is a variable, give it the generalized type.
+                    PatternVal::Var(pattern_var) => {
+                        ctx.add_symbol_ty(*pattern_var, PolyType::Forall(forall));
+                    }
+
+                    // For any other patterns, instantiate the type we just generalized and unify it with the pattern type.
+                    _ => {
+                        let val_ty = forall.instantiate(ctx);
+                        let pattern_ty = pattern(ctx, &binding.pattern)?;
+                        unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.1.data);
+                    }
+                }
+
+                // In case we did not generalize the type, just unify it with the pattern type.
+                Err(val_ty) => {
+                    let pattern_ty = pattern(ctx, &binding.pattern)?;
+                    unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.1.data)?;
+                }
             };
-            ctx.add_symbol_ty(binding.symbol, general).unwrap();
 
             // Now that we have the type of the binding in the context, we can infer the return expression.
             infer(ctx, &binding.expr)?
@@ -443,10 +462,16 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
         ExprVal::Lambda(lambda) => {
             // Relatively simple, just assign the parameter a fresh meta variable and then infer the body.
 
+            // Iterate through the lambda cases and successively build up the parameter and return types.
             let param_ty = InferType::Var(ctx.fresh_meta());
-            ctx.add_symbol_ty(lambda.param, PolyType::Type(param_ty.clone())).unwrap();
+            let ret_ty = InferType::Var(ctx.fresh_meta());
+            for case in &lambda.cases {
+                let pattern_ty = pattern(ctx, &case.pattern)?;
+                unify(&pattern_ty, &param_ty, ctx.forall_level, case.pattern.1.data)?;
 
-            let ret_ty = infer(ctx, &lambda.body)?;
+                let body_ty = infer(ctx, &case.body)?;
+                unify(&body_ty, &ret_ty, ctx.forall_level, case.body.2.data)?;
+            }
 
             InferType::Type(MonoType::function(param_ty, ret_ty))
         }
@@ -498,6 +523,27 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
     };
 
     ctx.add_expr_ty(node_data.id, ty.clone()).unwrap();
+
+    Ok(ty)
+}
+
+/// Infers the suggested type of a pattern.
+fn pattern(ctx: &Context, Pattern(pattern, _): &Pattern<Sem>) -> InferResult<InferType> {
+    let ty = match pattern {
+        // Wildcard patterns don't suggest any type in particular, so just return a fresh type variable.
+        PatternVal::Wildcard => InferType::Var(ctx.fresh_meta()),
+
+        // Same as above with variables, they don't suggest any type in particular.
+        PatternVal::Var(var) => {
+            let meta_var = ctx.fresh_meta();
+            ctx.add_symbol_ty(*var, PolyType::Type(InferType::Var(meta_var.clone())));
+            InferType::Var(meta_var)
+        }
+
+        PatternVal::Unit => InferType::Type(MonoType::Primitive(Primitive::Unit)),
+        PatternVal::Number(_) => InferType::Type(MonoType::Primitive(Primitive::Int)),
+        PatternVal::Bool(_) => InferType::Type(MonoType::Primitive(Primitive::Bool)),
+    };
 
     Ok(ty)
 }
@@ -651,14 +697,14 @@ impl Embedder {
             ExprVal::Var(s) => ExprVal::Var(*s),
 
             ExprVal::Bind(binding) => ExprVal::bind(Let {
-                symbol: binding.symbol,
+                pattern: self.pattern(&binding.pattern),
                 value: self.expr(&binding.value),
                 expr: self.expr(&binding.expr)
             }),
 
             ExprVal::Lambda(lambda) => ExprVal::lambda(Lambda {
-                param: lambda.param,
-                body: self.expr(&lambda.body)
+                cases: lambda.cases.iter()
+                    .map(|case| self.case(case)).collect()
             }),
 
             ExprVal::Apply(application) => ExprVal::apply(Application {
@@ -678,6 +724,29 @@ impl Embedder {
         Expr(
             typed_expr,
             TypedExprData { ty },
+            node_data.clone().map(|span| span)
+        )
+    }
+
+    fn case(&self, case: &Case<Sem>) -> Case<Typed> {
+        Case {
+            pattern: self.pattern(&case.pattern),
+            body: self.expr(&case.body),
+            data: case.data.clone().map(|span| span)
+        }
+    }
+
+    fn pattern(&self, Pattern(pattern, node_data): &Pattern<Sem>) -> Pattern<Typed> {
+        let typed_pattern = match pattern {
+            PatternVal::Wildcard => PatternVal::Wildcard,
+            PatternVal::Var(var) => PatternVal::Var(*var),
+            PatternVal::Unit => PatternVal::Unit,
+            PatternVal::Number(val) => PatternVal::Number(*val),
+            PatternVal::Bool(val) => PatternVal::Bool(*val),
+        };
+
+        Pattern(
+            typed_pattern,
             node_data.clone().map(|span| span)
         )
     }
