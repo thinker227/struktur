@@ -91,35 +91,3 @@ pub enum PatternVal<S: Stage> {
     Number(u64),
     Bool(bool),
 }
-
-pub struct TypeExpr<S: Stage>(pub TypeExprVal<S>, pub NodeData<S>);
-
-pub enum TypeExprVal<S: Stage> {
-    Unit,
-    Int,
-    Bool,
-    String,
-    TypeVar(S::Sym),
-    Function(Box<FunctionTypeExpr<S>>),
-}
-
-pub struct FunctionTypeExpr<S: Stage> {
-    pub param: TypeExpr<S>,
-    pub ret: TypeExpr<S>,
-}
-
-pub enum PolyTypeExpr<S: Stage> {
-    Forall(ForallTypeExpr<S>),
-    Type(TypeExpr<S>),
-}
-
-pub struct ForallTypeExpr<S: Stage> {
-    pub vars: Vec<TypeVarExpr<S>>,
-    pub target: TypeExpr<S>,
-    pub data: NodeData<S>,
-}
-
-pub struct TypeVarExpr<S: Stage> {
-    pub symbol: S::Sym,
-    pub data: NodeData<S>,
-}
