@@ -437,14 +437,14 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
 
                     // In case the pattern is a variable, give it the generalized type.
                     PatternVal::Var(pattern_var) => {
-                        ctx.add_symbol_ty(*pattern_var, PolyType::Forall(forall));
+                        ctx.add_symbol_ty(*pattern_var, PolyType::Forall(forall)).unwrap();
                     }
 
                     // For any other patterns, instantiate the type we just generalized and unify it with the pattern type.
                     _ => {
                         let val_ty = forall.instantiate(ctx);
                         let pattern_ty = pattern(ctx, &binding.pattern)?;
-                        unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.1.data);
+                        unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.1.data)?;
                     }
                 }
 
@@ -536,7 +536,7 @@ fn pattern(ctx: &Context, Pattern(pattern, _): &Pattern<Sem>) -> InferResult<Inf
         // Same as above with variables, they don't suggest any type in particular.
         PatternVal::Var(var) => {
             let meta_var = ctx.fresh_meta();
-            ctx.add_symbol_ty(*var, PolyType::Type(InferType::Var(meta_var.clone())));
+            ctx.add_symbol_ty(*var, PolyType::Type(InferType::Var(meta_var.clone()))).unwrap();
             InferType::Var(meta_var)
         }
 
