@@ -10,5 +10,5 @@ pub mod ast;
 pub mod parse;
 pub mod symbols;
 pub mod types;
-pub mod cps;
-pub mod codegen;
+// pub mod cps;
+// pub mod codegen;

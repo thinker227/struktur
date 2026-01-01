@@ -1,7 +1,7 @@
 use std::{env, fs, io::Write as _, path::{self, PathBuf}, process::ExitCode};
 
 use clap::Parser;
-use struktur::{ast::{self, Ast}, codegen::emit, cps::transform_cps, error::CompileError, parse::parse, stage::Typed, symbols::{self, resolve_symbols}, types::{pretty_print::pretty_print, type_check}};
+use struktur::{ast::{self, Ast}, /* codegen::emit, cps::transform_cps ,*/ error::CompileError, parse::parse, stage::Typed, symbols::{self, resolve_symbols}, types::{pretty_print::pretty_print, type_check}};
 use miette::{NamedSource, Report};
 
 #[derive(Debug, Parser)]
@@ -102,6 +102,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
         return Ok(ExitCode::SUCCESS);
     }
 
+    /*
     let cps = transform_cps(&ast);
 
     if args.cps {
@@ -117,6 +118,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
     }
     let mut out_file = fs::File::create(&output_path)?;
     out_file.write_all(out.as_bytes())?;
+    */
 
     Ok(ExitCode::SUCCESS)
 }
