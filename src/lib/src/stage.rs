@@ -40,7 +40,7 @@ pub trait Stage {
     type VarData: Debug + Clone;
 
     /// Additional data for functions.
-    type FuncData: Debug + Clone;
+    type BindingData: Debug + Clone;
 }
 
 /// Freshly parsed AST.
@@ -55,7 +55,7 @@ impl Stage for Parse {
     type Syms = ();
     type ExprData = ();
     type VarData = !;
-    type FuncData = !;
+    type BindingData = !;
 }
 
 /// Semantically resolved AST.
@@ -68,7 +68,7 @@ impl Stage for Sem {
     type Syms = Symbols<Sem>;
     type ExprData = ();
     type VarData = ();
-    type FuncData = ();
+    type BindingData = ();
 }
 
 /// Fully typed AST.
@@ -81,5 +81,5 @@ impl Stage for Typed {
     type Syms = Symbols<Typed>;
     type ExprData = TypedExprData;
     type VarData = TypedVariableData;
-    type FuncData = TypedBindingData;
+    type BindingData = TypedBindingData;
 }

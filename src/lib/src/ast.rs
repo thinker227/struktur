@@ -186,12 +186,12 @@ pub trait Visitor {
 
     fn item(&mut self, item: &Item<Self::S>) {
         match &item.0 {
-            ItemVal::Binding(function) => self.function(function, &item.1),
+            ItemVal::Binding(binding) => self.binding(binding, &item.1),
         }
     }
 
-    fn function(&mut self, function: &Binding<Self::S>, node_data: &NodeData<Self::S>) {
-        self.expr(&function.body);
+    fn binding(&mut self, binding: &Binding<Self::S>, node_data: &NodeData<Self::S>) {
+        self.expr(&binding.body);
     }
 
     fn expr(&mut self, expr: &Expr<Self::S>) {

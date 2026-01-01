@@ -571,7 +571,7 @@ fn prune(ty: &InferType) -> MonoType<Pruned> {
 /// Traces the reference graph of a binding.
 struct Referencer<'a> {
     current: GraphNode,
-    functions: &'a HashMap<Symbol, GraphNode>,
+    bindings: &'a HashMap<Symbol, GraphNode>,
     graph: &'a mut DiGraph<Symbol, ()>,
 }
 
@@ -579,7 +579,7 @@ impl Visitor for Referencer<'_> {
     type S = Sem;
 
     fn var_expr(&mut self, symbol: &Symbol, _: ExprDataBundle<'_, Self::S>) {
-        if let Some(referenced) = self.functions.get(symbol) {
+        if let Some(referenced) = self.bindings.get(symbol) {
             self.graph.add_edge(self.current, *referenced, ());
         }
     }
@@ -591,25 +591,25 @@ fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
 
     let items = &ast.root().0;
 
-    let mut functions = HashMap::new();
+    let mut bindings = HashMap::new();
     for Item(item, _) in items {
         match item {
-            ItemVal::Binding(function) => {
-                let index = graph.add_node(function.symbol);
-                functions.insert(function.symbol, index);
+            ItemVal::Binding(binding) => {
+                let index = graph.add_node(binding.symbol);
+                bindings.insert(binding.symbol, index);
             }
         }
     }
 
     for Item(item, data) in items {
         match item {
-            ItemVal::Binding(function) => {
+            ItemVal::Binding(binding) => {
                 let mut referencer = Referencer {
-                    current: *functions.get(&function.symbol).unwrap(),
-                    functions: &functions,
+                    current: *bindings.get(&binding.symbol).unwrap(),
+                    bindings: &bindings,
                     graph: &mut graph
                 };
-                referencer.function(function, data);
+                referencer.binding(binding, data);
             }
         }
     }
@@ -658,7 +658,7 @@ impl Embedder {
                     ty: self.get_symbol_type(symbol)
                 }
             )),
-            SymbolData::Func(function) => SymbolData::Func(function.map::<Typed>(|()|
+            SymbolData::Binding(function) => SymbolData::Binding(function.map::<Typed>(|()|
                 TypedBindingData {
                     ty: self.get_symbol_type(symbol)
                 }

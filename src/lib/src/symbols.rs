@@ -34,8 +34,8 @@ static SYMBOL_PROVIDER: IdProvider<Symbol> = IdProvider::new(Symbol);
 pub enum SymbolData<S: Stage> {
     /// A variable.
     Var(VariableData<S>),
-    /// A function.
-    Func(FunctionData<S>),
+    /// A binding.
+    Binding(BindingData<S>),
 }
 
 /// Data for a variable symbol.
@@ -60,21 +60,21 @@ impl<S: Stage> VariableData<S> {
     }
 }
 
-/// Data for a function symbol.
+/// Data for a binding symbol.
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct FunctionData<S: Stage> {
-    /// The name of the function.
+pub struct BindingData<S: Stage> {
+    /// The name of the binding.
     pub name: String,
-    /// The ID of the declaring node of the function.
+    /// The ID of the declaring node of the binding.
     pub decl: NodeId,
-    /// Stage-specific additional for the function.
-    pub data: S::FuncData,
+    /// Stage-specific additional for the binding.
+    pub data: S::BindingData,
 }
 
-impl<S: Stage> FunctionData<S> {
-    pub fn map<T: Stage>(&self, f: impl FnOnce(&S::FuncData) -> T::FuncData) -> FunctionData<T> {
-        FunctionData {
+impl<S: Stage> BindingData<S> {
+    pub fn map<T: Stage>(&self, f: impl FnOnce(&S::BindingData) -> T::BindingData) -> BindingData<T> {
+        BindingData {
             name: self.name.clone(),
             decl: self.decl,
             data: f(&self.data)
@@ -87,14 +87,14 @@ impl<S: Stage> SymbolData<S> {
     pub fn name(&self) -> &String {
         match self {
             SymbolData::Var(variable) => &variable.name,
-            SymbolData::Func(function) => &function.name,
+            SymbolData::Binding(binding) => &binding.name,
         }
     }
 
     pub fn decl(&self) -> NodeId {
         match self {
             SymbolData::Var(variable) => variable.decl,
-            SymbolData::Func(function) => function.decl,
+            SymbolData::Binding(binding) => binding.decl,
         }
     }
 }

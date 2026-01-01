@@ -84,7 +84,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
             match &item.0 {
                 ast::ItemVal::Binding(binding) => {
                     let symbol = match ast.symbols().get(binding.symbol) {
-                        symbols::SymbolData::Func(symbol) => symbol,
+                        symbols::SymbolData::Binding(symbol) => symbol,
                         _ => unreachable!()
                     };
 

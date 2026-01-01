@@ -1,6 +1,6 @@
 use std::collections::hash_map::{HashMap, Entry};
 
-use crate::{ast::*, stage::{Parse, Sem}, symbols::{FunctionData, Symbol, SymbolData, Symbols, VariableData}, text_span::TextSpan};
+use crate::{ast::*, stage::{Parse, Sem}, symbols::{BindingData, Symbol, SymbolData, Symbols, VariableData}, text_span::TextSpan};
 
 /// Resolves all the symbols of an AST.
 pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
@@ -100,9 +100,9 @@ impl<'ast> Resolver<'ast> {
 
     fn register_item(&mut self, Item(item, node_data): &Item<Parse>) -> SymResult<Symbol> {
         let data = match item {
-            ItemVal::Binding(function) => {
-                SymbolData::Func(FunctionData {
-                    name: function.symbol.clone(),
+            ItemVal::Binding(binding) => {
+                SymbolData::Binding(BindingData {
+                    name: binding.symbol.clone(),
                     decl: node_data.id,
                     data: ()
                 })
@@ -124,8 +124,8 @@ impl<'ast> Resolver<'ast> {
 
     fn item(&mut self, Item(item, node_data): &Item<Parse>, symbol: Symbol) -> SymResult<Item<Sem>> {
         let val = match item {
-            ItemVal::Binding(function) => {
-                let sem_function = self.function(function, node_data, symbol)?;
+            ItemVal::Binding(binding) => {
+                let sem_function = self.binding(binding, node_data, symbol)?;
                 ItemVal::Binding(sem_function)
             }
         };
@@ -133,11 +133,11 @@ impl<'ast> Resolver<'ast> {
         Ok(Item(val, node_data.clone().into_stage()))
     }
 
-    fn function(&mut self, function: &Binding<Parse>, _: &NodeData<Parse>, function_symbol: Symbol) -> SymResult<Binding<Sem>> {
+    fn binding(&mut self, binding: &Binding<Parse>, _: &NodeData<Parse>, function_symbol: Symbol) -> SymResult<Binding<Sem>> {
         let sem_body = self.in_scope(|this| {
             // This technically doesn't need a scope,
             // but it's nice just to ensure that symbols don't accidentally leak out.
-            this.expr(&function.body)
+            this.expr(&binding.body)
         })?;
 
         Ok(Binding {
