@@ -2,6 +2,7 @@
 
 mod container;
 mod tree;
+pub mod visit;
 
 use std::any::Any;
 
