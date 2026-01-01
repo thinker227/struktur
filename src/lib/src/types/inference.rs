@@ -14,7 +14,7 @@ use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolData}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}};
+use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}};
 
 pub use self::var::MetaVar;
 
@@ -651,14 +651,14 @@ impl Embedder {
         Ast::new(typed_root, typed_symbols, ())
     }
 
-    fn symbol(&self, symbol: Symbol, data: &SymbolData<Sem>) -> SymbolData<Typed> {
+    fn symbol(&self, symbol: Symbol, data: &SymbolKind<Sem>) -> SymbolKind<Typed> {
         match data {
-            SymbolData::Var(var) => SymbolData::Var(var.map::<Typed>(|()|
+            SymbolKind::Var(var) => SymbolKind::Var(var.map::<Typed>(|()|
                 TypedVariableData {
                     ty: self.get_symbol_type(symbol)
                 }
             )),
-            SymbolData::Binding(function) => SymbolData::Binding(function.map::<Typed>(|()|
+            SymbolKind::Binding(function) => SymbolKind::Binding(function.map::<Typed>(|()|
                 TypedBindingData {
                     ty: self.get_symbol_type(symbol)
                 }

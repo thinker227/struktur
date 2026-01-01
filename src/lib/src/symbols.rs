@@ -28,20 +28,20 @@ impl Symbol {
 
 static SYMBOL_PROVIDER: IdProvider<Symbol> = IdProvider::new(Symbol);
 
-/// Data for a symbol.
+/// The kind of some symbol.
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub enum SymbolData<S: Stage> {
+pub enum SymbolKind<S: Stage> {
     /// A variable.
-    Var(VariableData<S>),
+    Var(VariableSymbol<S>),
     /// A binding.
-    Binding(BindingData<S>),
+    Binding(BindingSymbol<S>),
 }
 
-/// Data for a variable symbol.
+/// A variable symbol.
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct VariableData<S: Stage> {
+pub struct VariableSymbol<S: Stage> {
     /// The name of the variable.
     pub name: String,
     /// The ID of the declaring node of the variable.
@@ -50,9 +50,9 @@ pub struct VariableData<S: Stage> {
     pub data: S::VarData,
 }
 
-impl<S: Stage> VariableData<S> {
-    pub fn map<T: Stage>(&self, f: impl FnOnce(&S::VarData) -> T::VarData) -> VariableData<T> {
-        VariableData {
+impl<S: Stage> VariableSymbol<S> {
+    pub fn map<T: Stage>(&self, f: impl FnOnce(&S::VarData) -> T::VarData) -> VariableSymbol<T> {
+        VariableSymbol {
             name: self.name.clone(),
             decl: self.decl,
             data: f(&self.data)
@@ -60,10 +60,10 @@ impl<S: Stage> VariableData<S> {
     }
 }
 
-/// Data for a binding symbol.
+/// A binding symbol.
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct BindingData<S: Stage> {
+pub struct BindingSymbol<S: Stage> {
     /// The name of the binding.
     pub name: String,
     /// The ID of the declaring node of the binding.
@@ -72,9 +72,9 @@ pub struct BindingData<S: Stage> {
     pub data: S::BindingData,
 }
 
-impl<S: Stage> BindingData<S> {
-    pub fn map<T: Stage>(&self, f: impl FnOnce(&S::BindingData) -> T::BindingData) -> BindingData<T> {
-        BindingData {
+impl<S: Stage> BindingSymbol<S> {
+    pub fn map<T: Stage>(&self, f: impl FnOnce(&S::BindingData) -> T::BindingData) -> BindingSymbol<T> {
+        BindingSymbol {
             name: self.name.clone(),
             decl: self.decl,
             data: f(&self.data)
@@ -82,19 +82,19 @@ impl<S: Stage> BindingData<S> {
     }
 }
 
-impl<S: Stage> SymbolData<S> {
+impl<S: Stage> SymbolKind<S> {
     /// Gets the name of the symbol.
     pub fn name(&self) -> &String {
         match self {
-            SymbolData::Var(variable) => &variable.name,
-            SymbolData::Binding(binding) => &binding.name,
+            SymbolKind::Var(variable) => &variable.name,
+            SymbolKind::Binding(binding) => &binding.name,
         }
     }
 
     pub fn decl(&self) -> NodeId {
         match self {
-            SymbolData::Var(variable) => variable.decl,
-            SymbolData::Binding(binding) => binding.decl,
+            SymbolKind::Var(variable) => variable.decl,
+            SymbolKind::Binding(binding) => binding.decl,
         }
     }
 }
@@ -103,7 +103,7 @@ impl<S: Stage> SymbolData<S> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""))]
 pub struct Symbols<S: Stage> {
-    data: HashMap<Symbol, SymbolData<S>>,
+    data: HashMap<Symbol, SymbolKind<S>>,
 }
 
 impl<S: Stage> Symbols<S> {
@@ -118,19 +118,19 @@ impl<S: Stage> Symbols<S> {
     ///
     /// # Panics
     /// Panics if the given symbol does not originate from this [`Symbols`].
-    pub fn get(&self, symbol: Symbol) -> &SymbolData<S> {
+    pub fn get(&self, symbol: Symbol) -> &SymbolKind<S> {
         self.data.get(&symbol)
             .expect("symbol ID should be valid")
     }
 
     /// Registers data for a new symbol and returns it.
-    pub fn register(&mut self, data: SymbolData<S>) -> Symbol {
+    pub fn register(&mut self, data: SymbolKind<S>) -> Symbol {
         let symbol = SYMBOL_PROVIDER.next();
         self.data.insert(symbol, data);
         symbol
     }
 
-    pub fn map<T: Stage>(&self, mut f: impl FnMut(Symbol, &SymbolData<S>) -> SymbolData<T>) -> Symbols<T> {
+    pub fn map<T: Stage>(&self, mut f: impl FnMut(Symbol, &SymbolKind<S>) -> SymbolKind<T>) -> Symbols<T> {
         let data = self.data.iter()
             .map(|(symbol, data)| (
                 *symbol,

@@ -1,6 +1,6 @@
 use std::collections::hash_map::{HashMap, Entry};
 
-use crate::{ast::*, stage::{Parse, Sem}, symbols::{BindingData, Symbol, SymbolData, Symbols, VariableData}, text_span::TextSpan};
+use crate::{ast::*, stage::{Parse, Sem}, symbols::{BindingSymbol, Symbol, SymbolKind, Symbols, VariableSymbol}, text_span::TextSpan};
 
 /// Resolves all the symbols of an AST.
 pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
@@ -55,7 +55,7 @@ impl<'ast> Resolver<'ast> {
         res
     }
 
-    fn register(&mut self, name: String, data: SymbolData<Sem>) -> Result<Symbol, Symbol> {
+    fn register(&mut self, name: String, data: SymbolKind<Sem>) -> Result<Symbol, Symbol> {
         let Resolver { scopes, symbols, .. } = self;
 
         let scope = scopes.last_mut()
@@ -101,7 +101,7 @@ impl<'ast> Resolver<'ast> {
     fn register_item(&mut self, Item(item, node_data): &Item<Parse>) -> SymResult<Symbol> {
         let data = match item {
             ItemVal::Binding(binding) => {
-                SymbolData::Binding(BindingData {
+                SymbolKind::Binding(BindingSymbol {
                     name: binding.symbol.clone(),
                     decl: node_data.id,
                     data: ()
@@ -240,13 +240,13 @@ impl<'ast> Resolver<'ast> {
             PatternVal::Wildcard => PatternVal::Wildcard,
 
             PatternVal::Var(var) => {
-                let var_data = VariableData {
+                let var_data = VariableSymbol {
                     name: var.clone(),
                     decl: node_data.id,
                     data: ()
                 };
 
-                let var_symbol = self.register(var.clone(), SymbolData::Var(var_data)).expect("todo");
+                let var_symbol = self.register(var.clone(), SymbolKind::Var(var_data)).expect("todo");
 
                 PatternVal::Var(var_symbol)
             }
