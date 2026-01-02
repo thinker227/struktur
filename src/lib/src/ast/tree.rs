@@ -130,8 +130,7 @@ pub enum Pattern<S: Stage> {
     Bool(BoolPattern),
 }
 
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
+#[derive(Debug, Clone, Copy)]
 pub struct WildcardPattern {
     pub data: NodeData,
 }
@@ -143,21 +142,18 @@ pub struct VarPattern<S: Stage> {
     pub symbol: S::Sym,
 }
 
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
+#[derive(Debug, Clone, Copy)]
 pub struct UnitPattern {
     pub data: NodeData,
 }
 
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
+#[derive(Debug, Clone, Copy)]
 pub struct NumberPattern {
     pub data: NodeData,
     pub val: u64,
 }
 
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
+#[derive(Debug, Clone, Copy)]
 pub struct BoolPattern {
     pub data: NodeData,
     pub val: bool,
