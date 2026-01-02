@@ -7,7 +7,7 @@ pub mod visit;
 use std::any::Any;
 
 use derivative::Derivative;
-use crate::{ast::container::RootContainer, id::Id, stage::Stage};
+use crate::{ast::container::RootContainer, id::Id, stage::Stage, text_span::TextSpan};
 
 pub use self::tree::*;
 
@@ -48,27 +48,10 @@ impl<S: Stage + 'static> Ast<S> {
 #[repr(transparent)]
 pub struct NodeId(pub Id);
 
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct NodeData<S: Stage> {
-    pub data: S::NodeData,
+#[derive(Debug, Clone, Copy)]
+pub struct NodeData {
+    pub span: TextSpan,
     pub id: NodeId,
-}
-
-impl<S: Stage> NodeData<S> {
-    /// Converts the node into another stage.
-    pub fn into_stage<T: Stage>(self) -> NodeData<T>
-    where
-        T::NodeData: From<S::NodeData>
-    {
-        self.map(<T::NodeData>::from)
-    }
-
-    pub fn map<T: Stage>(self, f: impl FnOnce(S::NodeData) -> T::NodeData) -> NodeData<T> {
-        let NodeData { id, data } = self;
-        let data = f(data);
-        NodeData { data, id }
-    }
 }
 
 /// An AST node type.
@@ -77,21 +60,20 @@ pub trait Node: Any {
     type S: Stage;
 
     /// Gets the node data for the node.
-    fn node_data(&self) -> &NodeData<Self::S>;
+    fn node_data(&self) -> NodeData;
 
     /// Gets the ID for the node.
     fn id(&self) -> NodeId {
         self.node_data().id
     }
 
-    /// Gets the stage-specific associated node data for the node.
-    fn data(&self) -> &<Self::S as Stage>::NodeData {
-        &self.node_data().data
+    fn span(&self) -> TextSpan {
+        self.node_data().span
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ExprDataBundle<'a, S: Stage>(pub &'a S::ExprData, pub &'a NodeData<S>);
+pub struct ExprDataBundle<'a, S: Stage>(pub &'a S::ExprData, pub NodeData);
 
 #[allow(unused_variables)]
 pub trait Visitor {
@@ -105,11 +87,11 @@ pub trait Visitor {
 
     fn item(&mut self, item: &Item<Self::S>) {
         match &item.0 {
-            ItemVal::Binding(binding) => self.binding(binding, &item.1),
+            ItemVal::Binding(binding) => self.binding(binding, item.1),
         }
     }
 
-    fn binding(&mut self, binding: &Binding<Self::S>, node_data: &NodeData<Self::S>) {
+    fn binding(&mut self, binding: &Binding<Self::S>, node_data: NodeData) {
         self.expr(&binding.body);
     }
 
@@ -159,19 +141,19 @@ pub trait Visitor {
         default_visit_pattern(self, pattern);
     }
 
-    fn wildcard_pattern(&mut self, data: &NodeData<Self::S>) {}
+    fn wildcard_pattern(&mut self, data: NodeData) {}
 
-    fn var_pattern(&mut self, var: &<Self::S as Stage>::Sym, data: &NodeData<Self::S>) {}
+    fn var_pattern(&mut self, var: &<Self::S as Stage>::Sym, data: NodeData) {}
 
-    fn unit_pattern(&mut self, data: &NodeData<Self::S>) {}
+    fn unit_pattern(&mut self, data: NodeData) {}
 
-    fn number_pattern(&mut self, val: u64, data: &NodeData<Self::S>) {}
+    fn number_pattern(&mut self, val: u64, data: NodeData) {}
 
-    fn bool_pattern(&mut self, val: bool, data: &NodeData<Self::S>) {}
+    fn bool_pattern(&mut self, val: bool, data: NodeData) {}
 }
 
 pub fn default_visit_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &Expr<V::S>) {
-    let data = ExprDataBundle(&expr.1, &expr.2);
+    let data = ExprDataBundle(&expr.1, expr.2);
     match &expr.0 {
         ExprVal::Unit => visitor.unit_expr(data),
         ExprVal::Int(value) => visitor.int_expr(*value, data),
@@ -188,10 +170,10 @@ pub fn default_visit_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &Expr<V::S
 pub fn default_visit_pattern<V: Visitor + ?Sized>(visitor: &mut V, pattern: &Pattern<V::S>) {
     let data = &pattern.1;
     match &pattern.0 {
-        PatternVal::Wildcard => visitor.wildcard_pattern(data),
-        PatternVal::Var(var) => visitor.var_pattern(var, data),
-        PatternVal::Unit => visitor.unit_pattern(data),
-        PatternVal::Number(val) => visitor.number_pattern(*val, data),
-        PatternVal::Bool(val) => visitor.bool_pattern(*val, data),
+        PatternVal::Wildcard => visitor.wildcard_pattern(*data),
+        PatternVal::Var(var) => visitor.var_pattern(var, *data),
+        PatternVal::Unit => visitor.unit_pattern(*data),
+        PatternVal::Number(val) => visitor.number_pattern(*val, *data),
+        PatternVal::Bool(val) => visitor.bool_pattern(*val, *data),
     }
 }

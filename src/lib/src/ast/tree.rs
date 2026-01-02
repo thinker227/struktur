@@ -8,11 +8,11 @@ use crate::{ast::{Node, NodeData}, stage::Stage};
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct Root<S: Stage>(pub Vec<Item<S>>, pub NodeData<S>);
+pub struct Root<S: Stage>(pub Vec<Item<S>>, pub NodeData);
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct Item<S: Stage>(pub ItemVal<S>, pub NodeData<S>);
+pub struct Item<S: Stage>(pub ItemVal<S>, pub NodeData);
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
@@ -29,7 +29,7 @@ pub struct Binding<S: Stage> {
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct Expr<S: Stage>(pub ExprVal<S>, pub S::ExprData, pub NodeData<S>);
+pub struct Expr<S: Stage>(pub ExprVal<S>, pub S::ExprData, pub NodeData);
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
@@ -79,12 +79,12 @@ pub struct Lambda<S: Stage> {
 pub struct Case<S: Stage> {
     pub pattern: Pattern<S>,
     pub body: Expr<S>,
-    pub data: NodeData<S>,
+    pub data: NodeData,
 }
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct Pattern<S: Stage>(pub PatternVal<S>, pub NodeData<S>);
+pub struct Pattern<S: Stage>(pub PatternVal<S>, pub NodeData);
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
@@ -143,39 +143,39 @@ impl<S: Stage> ExprVal<S> {
 impl<S: Stage + 'static> Node for Root<S> {
     type S = S;
 
-    fn node_data(&self) -> &NodeData<Self::S> {
-        &self.1
+    fn node_data(&self) -> NodeData {
+        self.1
     }
 }
 
 impl<S: Stage + 'static> Node for Item<S> {
     type S = S;
 
-    fn node_data(&self) -> &NodeData<Self::S> {
-        &self.1
+    fn node_data(&self) -> NodeData {
+        self.1
     }
 }
 
 impl<S: Stage + 'static> Node for Expr<S> {
     type S = S;
 
-    fn node_data(&self) -> &NodeData<Self::S> {
-        &self.2
+    fn node_data(&self) -> NodeData {
+        self.2
     }
 }
 
 impl<S: Stage + 'static> Node for Case<S> {
     type S = S;
 
-    fn node_data(&self) -> &NodeData<Self::S> {
-        &self.data
+    fn node_data(&self) -> NodeData {
+        self.data
     }
 }
 
 impl<S: Stage + 'static> Node for Pattern<S> {
     type S = S;
 
-    fn node_data(&self) -> &NodeData<Self::S> {
-        &self.1
+    fn node_data(&self) -> NodeData {
+        self.1
     }
 }

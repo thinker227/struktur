@@ -8,7 +8,7 @@ mod lex;
 
 use std::{fmt::Display, rc::Rc};
 
-use crate::{ast::*, id::IdProvider, maybe_result::MaybeResult, stage::{Parse, Stage}, text_span::TextSpan};
+use crate::{ast::*, id::IdProvider, maybe_result::MaybeResult, stage::Parse, text_span::TextSpan};
 use self::lex::{Token, TokenKind, lex};
 
 #[derive(Debug, Clone, thiserror::Error, miette::Diagnostic)]
@@ -90,10 +90,10 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         }
     }
 
-    fn node_data(&self, data: <Parse as Stage>::NodeData) -> NodeData<Parse> {
+    fn node_data(&self, span: TextSpan) -> NodeData {
         NodeData {
             id: self.id_provider.next(),
-            data
+            span
         }
     }
 
@@ -171,7 +171,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         let eoi = self.advance();
 
         let span = match items.first() {
-            Some(item) => TextSpan::between(*item.data(), eoi.span),
+            Some(item) => TextSpan::between(item.span(), eoi.span),
             None => eoi.span
         };
 
@@ -204,7 +204,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         self.expect(TokenKind::Equals)?;
         let body = self.parse_expr()?;
 
-        let span = TextSpan::between(r#let.span, body.2.data);
+        let span = TextSpan::between(r#let.span, body.2.span);
 
         Ok((
             Binding {
@@ -225,7 +225,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         while let Some(expr) = self.try_parse_atom_expr(ExprContext::Trailing).into_option() {
             let expr = expr?;
 
-            let span = TextSpan::between(result.2.data, expr.2.data);
+            let span = TextSpan::between(result.2.span, expr.2.span);
 
             result = Expr(
                 ExprVal::Apply(Box::new(Application {
@@ -317,7 +317,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         self.expect(TokenKind::In)?;
         let expr = self.parse_expr()?;
 
-        let span = TextSpan::between(r#let.span, expr.2.data);
+        let span = TextSpan::between(r#let.span, expr.2.span);
 
         Ok((
             Let {
@@ -337,7 +337,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         self.expect(TokenKind::Else)?;
         let if_false = self.parse_expr()?;
 
-        let span = TextSpan::between(r#if.span, if_false.2.data);
+        let span = TextSpan::between(r#if.span, if_false.2.span);
 
         Ok((
             IfElse {
@@ -361,7 +361,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             cases.push(case);
         }
 
-        let span = TextSpan::between(fun.span, cases.last().unwrap().body.2.data);
+        let span = TextSpan::between(fun.span, cases.last().unwrap().body.2.span);
 
         Ok((Lambda { cases }, span))
     }
@@ -371,7 +371,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         self.expect(TokenKind::DashGreaterThan)?;
         let body = self.parse_expr()?;
 
-        let span = TextSpan::between(pattern.1.data, body.2.data);
+        let span = TextSpan::between(pattern.1.span, body.2.span);
 
         Ok(Case {
             pattern,

@@ -95,7 +95,7 @@ impl<'ast> Resolver<'ast> {
             sem_items.push(sem_item);
         }
 
-        Ok(Root(sem_items, node_data.clone().into_stage()))
+        Ok(Root(sem_items, *node_data))
     }
 
     fn register_item(&mut self, Item(item, node_data): &Item<Parse>) -> SymResult<Symbol> {
@@ -113,9 +113,9 @@ impl<'ast> Resolver<'ast> {
         self.register(name.clone(), data)
             .map_err(|prev| {
                 let prev = self.symbols.get(prev).decl();
-                let prev_span = *self.ast.get_node(prev).data();
+                let prev_span = self.ast.get_node(prev).span();
                 SymbolResError::DuplicateDeclaration {
-                    span: node_data.data,
+                    span: node_data.span,
                     name,
                     previous_declaration: prev_span
                 }
@@ -125,15 +125,15 @@ impl<'ast> Resolver<'ast> {
     fn item(&mut self, Item(item, node_data): &Item<Parse>, symbol: Symbol) -> SymResult<Item<Sem>> {
         let val = match item {
             ItemVal::Binding(binding) => {
-                let sem_function = self.binding(binding, node_data, symbol)?;
+                let sem_function = self.binding(binding,* node_data, symbol)?;
                 ItemVal::Binding(sem_function)
             }
         };
 
-        Ok(Item(val, node_data.clone().into_stage()))
+        Ok(Item(val, *node_data))
     }
 
-    fn binding(&mut self, binding: &Binding<Parse>, _: &NodeData<Parse>, function_symbol: Symbol) -> SymResult<Binding<Sem>> {
+    fn binding(&mut self, binding: &Binding<Parse>, _: NodeData, function_symbol: Symbol) -> SymResult<Binding<Sem>> {
         let sem_body = self.in_scope(|this| {
             // This technically doesn't need a scope,
             // but it's nice just to ensure that symbols don't accidentally leak out.
@@ -218,7 +218,7 @@ impl<'ast> Resolver<'ast> {
             }
         };
 
-        Ok(Expr(val, (), node_data.clone().into_stage()))
+        Ok(Expr(val, (), *node_data))
     }
 
     fn case(&mut self, case: &Case<Parse>) -> SymResult<Case<Sem>> {
@@ -231,7 +231,7 @@ impl<'ast> Resolver<'ast> {
         Ok(Case {
             pattern: sem_pattern,
             body: sem_body,
-            data: case.data.clone().into_stage()
+            data: case.data
         })
     }
 
@@ -258,6 +258,6 @@ impl<'ast> Resolver<'ast> {
             PatternVal::Bool(val) => PatternVal::Bool(*val),
         };
 
-        Ok(Pattern(val, node_data.clone().into_stage()))
+        Ok(Pattern(val, *node_data))
     }
 }

@@ -17,13 +17,10 @@
 
 use std::fmt::Debug;
 
-use crate::{symbols::{Symbol, Symbols}, types::{TypedExprData, TypedBindingData, TypedVariableData}, text_span::TextSpan};
+use crate::{symbols::{Symbol, Symbols}, types::{TypedExprData, TypedBindingData, TypedVariableData}};
 
 /// The compilation stage of an AST.
 pub trait Stage {
-    /// Additional data for nodes.
-    type NodeData: Debug + Clone;
-
     /// Representation of symbols.
     type Sym: Debug + Clone;
 
@@ -46,7 +43,6 @@ pub trait Stage {
 pub struct Parse;
 
 impl Stage for Parse {
-    type NodeData = TextSpan;
     type Sym = String;
     type Syms = ();
     type ExprData = ();
@@ -58,7 +54,6 @@ impl Stage for Parse {
 pub struct Sem;
 
 impl Stage for Sem {
-    type NodeData = TextSpan;
     type Sym = Symbol;
     type Syms = Symbols<Sem>;
     type ExprData = ();
@@ -70,7 +65,6 @@ impl Stage for Sem {
 pub struct Typed;
 
 impl Stage for Typed {
-    type NodeData = TextSpan;
     type Sym = Symbol;
     type Syms = Symbols<Typed>;
     type ExprData = TypedExprData;

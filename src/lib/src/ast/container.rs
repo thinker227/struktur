@@ -76,7 +76,7 @@ impl<S: Stage + 'static> Visitor for IdMapper<S> {
         self.add(item);
 
         match &item.0 {
-            ItemVal::Binding(binding) => self.binding(binding, &item.1),
+            ItemVal::Binding(binding) => self.binding(binding, item.1),
         }
     }
 

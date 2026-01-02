@@ -444,14 +444,14 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
                     _ => {
                         let val_ty = forall.instantiate(ctx);
                         let pattern_ty = pattern(ctx, &binding.pattern)?;
-                        unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.1.data)?;
+                        unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.1.span)?;
                     }
                 }
 
                 // In case we did not generalize the type, just unify it with the pattern type.
                 Err(val_ty) => {
                     let pattern_ty = pattern(ctx, &binding.pattern)?;
-                    unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.1.data)?;
+                    unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.1.span)?;
                 }
             };
 
@@ -467,10 +467,10 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
             let ret_ty = InferType::Var(ctx.fresh_meta());
             for case in &lambda.cases {
                 let pattern_ty = pattern(ctx, &case.pattern)?;
-                unify(&pattern_ty, &param_ty, ctx.forall_level, case.pattern.1.data)?;
+                unify(&pattern_ty, &param_ty, ctx.forall_level, case.pattern.1.span)?;
 
                 let body_ty = infer(ctx, &case.body)?;
-                unify(&body_ty, &ret_ty, ctx.forall_level, case.body.2.data)?;
+                unify(&body_ty, &ret_ty, ctx.forall_level, case.body.2.span)?;
             }
 
             InferType::Type(MonoType::function(param_ty, ret_ty))
@@ -490,7 +490,7 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
                     ret_ty.clone()
                 )),
                 ctx.forall_level,
-                app.target.2.data
+                app.target.2.span
             )?;
 
             ret_ty
@@ -505,7 +505,7 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
                 &condition_ty,
                 &InferType::Type(MonoType::Primitive(Primitive::Bool)),
                 ctx.forall_level,
-                if_else.condition.2.data
+                if_else.condition.2.span
             )?;
 
             unify(
@@ -513,8 +513,8 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
                 &if_false_ty,
                 ctx.forall_level,
                 TextSpan::between(
-                    if_else.if_true.2.data,
-                    if_else.if_false.2.data
+                    if_else.if_true.2.span,
+                    if_else.if_false.2.span
                 )
             )?;
 
@@ -609,7 +609,7 @@ fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
                     bindings: &bindings,
                     graph: &mut graph
                 };
-                referencer.binding(binding, data);
+                referencer.binding(binding, *data);
             }
         }
     }
@@ -671,7 +671,7 @@ impl Embedder {
             .map(|item| self.item(item))
             .collect();
 
-        Root(typed_items, node_data.clone().map(|span| span))
+        Root(typed_items, *node_data)
     }
 
     fn item(&self, Item(item, node_data): &Item<Sem>) -> Item<Typed> {
@@ -685,7 +685,7 @@ impl Embedder {
             }
         };
 
-        Item(typed_item, node_data.clone().map(|span| span))
+        Item(typed_item, *node_data)
     }
 
     fn expr(&self, Expr(expr, _, node_data): &Expr<Sem>) -> Expr<Typed> {
@@ -724,7 +724,7 @@ impl Embedder {
         Expr(
             typed_expr,
             TypedExprData { ty },
-            node_data.clone().map(|span| span)
+            *node_data
         )
     }
 
@@ -732,7 +732,7 @@ impl Embedder {
         Case {
             pattern: self.pattern(&case.pattern),
             body: self.expr(&case.body),
-            data: case.data.clone().map(|span| span)
+            data: case.data
         }
     }
 
@@ -747,7 +747,7 @@ impl Embedder {
 
         Pattern(
             typed_pattern,
-            node_data.clone().map(|span| span)
+            *node_data
         )
     }
 }
@@ -801,7 +801,7 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
             // Important that the level here is 1,
             // since unification variables declared at the top-level
             // would otherwise not be able to have their levels lowerd properly.
-            unify(&body_ty, &InferType::Var(binding_var), 1, binding.body.2.data)?;
+            unify(&body_ty, &InferType::Var(binding_var), 1, binding.body.2.span)?;
         }
 
         // Try to generalize the binding types.
