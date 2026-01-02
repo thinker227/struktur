@@ -81,8 +81,8 @@ fn main() -> Result<ExitCode, anyhow::Error> {
 
     if args.types {
         for item in &ast.root().0 {
-            match &item.0 {
-                ast::ItemVal::Binding(binding) => {
+            match item {
+                ast::Item::Binding(binding) => {
                     let symbol = match ast.symbols().get(binding.symbol) {
                         symbols::SymbolKind::Binding(symbol) => symbol,
                         _ => unreachable!()

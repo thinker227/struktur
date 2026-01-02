@@ -97,6 +97,13 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         }
     }
 
+    fn expr_data(&self, span: TextSpan) -> ExprData<Parse> {
+        ExprData {
+            node: self.node_data(span),
+            expr: ()
+        }
+    }
+
     fn move_next(&mut self) -> Token<'src> {
         match self.tokens.first() {
             Some(t) => {
@@ -186,33 +193,31 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     }
 
     fn try_parse_item(&mut self) -> MaybeResult<Item<Parse>, ParseError> {
-        let (item, span) = match self.current().kind {
+        let item = match self.current().kind {
             TokenKind::Let => {
-                let (binding, span) = self.parse_binding()?;
-                (ItemVal::Binding(binding), span)
+                let binding = self.parse_binding()?;
+                Item::Binding(binding)
             }
 
             _ => return MaybeResult::None
         };
 
-        MaybeResult::Ok(Item(item, self.node_data(span)))
+        MaybeResult::Ok(item)
     }
 
-    fn parse_binding(&mut self) -> ParseResult<(Binding<Parse>, TextSpan)> {
+    fn parse_binding(&mut self) -> ParseResult<Binding<Parse>> {
         let r#let = self.expect(TokenKind::Let)?;
         let name = self.expect(TokenKind::Name)?;
         self.expect(TokenKind::Equals)?;
         let body = self.parse_expr()?;
 
-        let span = TextSpan::between(r#let.span, body.2.span);
+        let span = TextSpan::between(r#let.span, body.span());
 
-        Ok((
-            Binding {
-                symbol: name.text.to_owned(),
-                body
-            },
-            span
-        ))
+        Ok(Binding {
+            data: self.node_data(span),
+            symbol: name.text.to_owned(),
+            body
+        })
     }
 
     fn parse_expr(&mut self) -> ParseResult<Expr<Parse>> {
@@ -225,16 +230,13 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         while let Some(expr) = self.try_parse_atom_expr(ExprContext::Trailing).into_option() {
             let expr = expr?;
 
-            let span = TextSpan::between(result.2.span, expr.2.span);
+            let span = TextSpan::between(result.span(), expr.span());
 
-            result = Expr(
-                ExprVal::Apply(Box::new(Application {
-                    target: result,
-                    arg: expr
-                })),
-                (),
-                self.node_data(span)
-            );
+            result = Expr::Apply(Box::new(Application {
+                data: self.expr_data(span),
+                target: result,
+                arg: expr
+            }));
         }
 
         Ok(result)
@@ -248,14 +250,14 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     }
 
     fn try_parse_atom_expr(&mut self, ctx: ExprContext) -> MaybeResult<Expr<Parse>, ParseError> {
-        let (expr, span) = match self.current().kind {
+        let expr = match self.current().kind {
             TokenKind::OpenParen => {
                 let open_paren = self.advance();
 
                 if self.current().kind == TokenKind::CloseParen {
                     let close_paren = self.advance();
                     let span = TextSpan::between(open_paren.span, close_paren.span);
-                    (ExprVal::Unit, span)
+                    Expr::Unit(self.expr_data(span))
                 } else {
                     let expr = self.parse_expr()?;
                     self.expect(TokenKind::CloseParen)?;
@@ -266,50 +268,50 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             TokenKind::Number => {
                 let number = self.advance();
                 let val = number.text.parse().unwrap();
-                (ExprVal::Int(val), number.span)
+                Expr::Int(self.expr_data(number.span), val)
             }
 
             TokenKind::True | TokenKind::False => {
                 let bool = self.advance();
                 let val = bool.kind == TokenKind::True;
-                (ExprVal::Bool(val), bool.span)
+                Expr::Bool(self.expr_data(bool.span), val)
             }
 
             TokenKind::String => {
                 let str = self.advance();
                 let text = str.text;
                 let val = text[1 .. text.len() - 1].to_owned();
-                (ExprVal::String(val), str.span)
+                Expr::String(self.expr_data(str.span), val)
             }
 
             TokenKind::Name => {
                 let name = self.advance();
                 let var = name.text.to_owned();
-                (ExprVal::Var(var), name.span)
+                Expr::Var(self.expr_data(name.span), var)
             }
 
             TokenKind::Let if ctx == ExprContext::Normal => {
-                let (r#let, span) = self.parse_let_expr()?;
-                (ExprVal::Bind(Box::new(r#let)), span)
+                let r#let = self.parse_let_expr()?;
+                Expr::Bind(Box::new(r#let))
             }
 
             TokenKind::Fun if ctx == ExprContext::Normal => {
-                let (lambda, span) = self.parse_lambda_expr()?;
-                (ExprVal::Lambda(Box::new(lambda)), span)
+                let lambda = self.parse_lambda_expr()?;
+                Expr::Lambda(Box::new(lambda))
             }
 
             TokenKind::If if ctx == ExprContext::Normal => {
-                let (if_else, span) = self.parse_if_else_expr()?;
-                (ExprVal::If(Box::new(if_else)), span)
+                let if_else = self.parse_if_else_expr()?;
+                Expr::If(Box::new(if_else))
             }
 
             _ => return MaybeResult::None
         };
 
-        MaybeResult::Ok(Expr(expr, (), self.node_data(span)))
+        MaybeResult::Ok(expr)
     }
 
-    fn parse_let_expr(&mut self) -> ParseResult<(Let<Parse>, TextSpan)> {
+    fn parse_let_expr(&mut self) -> ParseResult<Let<Parse>> {
         let r#let = self.expect(TokenKind::Let)?;
         let pattern = self.parse_pattern()?;
         self.expect(TokenKind::Equals)?;
@@ -317,19 +319,17 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         self.expect(TokenKind::In)?;
         let expr = self.parse_expr()?;
 
-        let span = TextSpan::between(r#let.span, expr.2.span);
+        let span = TextSpan::between(r#let.span, expr.span());
 
-        Ok((
-            Let {
-                pattern,
-                value,
-                expr
-            },
-            span
-        ))
+        Ok(Let {
+            data: self.expr_data(span),
+            pattern,
+            value,
+            expr
+        })
     }
 
-    fn parse_if_else_expr(&mut self) -> ParseResult<(IfElse<Parse>, TextSpan)> {
+    fn parse_if_else_expr(&mut self) -> ParseResult<IfElse<Parse>> {
         let r#if = self.expect(TokenKind::If)?;
         let condition = self.parse_expr()?;
         self.expect(TokenKind::Then)?;
@@ -337,19 +337,17 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         self.expect(TokenKind::Else)?;
         let if_false = self.parse_expr()?;
 
-        let span = TextSpan::between(r#if.span, if_false.2.span);
+        let span = TextSpan::between(r#if.span, if_false.span());
 
-        Ok((
-            IfElse {
-                condition,
-                if_true,
-                if_false
-            },
-            span
-        ))
+        Ok(IfElse {
+            data: self.expr_data(span),
+            condition,
+            if_true,
+            if_false
+        })
     }
 
-    fn parse_lambda_expr(&mut self) -> ParseResult<(Lambda<Parse>, TextSpan)> {
+    fn parse_lambda_expr(&mut self) -> ParseResult<Lambda<Parse>> {
         let fun = self.expect(TokenKind::Fun)?;
 
         self.advance_if(TokenKind::Bar);
@@ -361,9 +359,12 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             cases.push(case);
         }
 
-        let span = TextSpan::between(fun.span, cases.last().unwrap().body.2.span);
+        let span = TextSpan::between(fun.span, cases.last().unwrap().body.span());
 
-        Ok((Lambda { cases }, span))
+        Ok(Lambda {
+            data: self.expr_data(span),
+            cases
+        })
     }
 
     fn parse_case(&mut self) -> ParseResult<Case<Parse>> {
@@ -371,7 +372,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         self.expect(TokenKind::DashGreaterThan)?;
         let body = self.parse_expr()?;
 
-        let span = TextSpan::between(pattern.1.span, body.2.span);
+        let span = TextSpan::between(pattern.span(), body.span());
 
         Ok(Case {
             pattern,
@@ -381,22 +382,23 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     }
 
     fn parse_pattern(&mut self) -> ParseResult<Pattern<Parse>> {
-        let (pattern, span) = match self.current().kind {
+        let pattern = match self.current().kind {
             TokenKind::Underscore => {
                 let underscore = self.advance();
-                (PatternVal::Wildcard, underscore.span)
+                Pattern::Wildcard(self.node_data(underscore.span))
             }
 
             TokenKind::Name => {
                 let name = self.advance();
-                (PatternVal::Var(name.text.to_owned()), name.span)
+                Pattern::Var(self.node_data(name.span), name.text.to_owned())
             }
 
             TokenKind::OpenParen => {
                 let open_paren = self.advance();
 
                 if let Some(close_paren) = self.advance_if(TokenKind::CloseParen) {
-                    (PatternVal::Unit, TextSpan::between(open_paren.span, close_paren.span))
+                    let span = TextSpan::between(open_paren.span, close_paren.span);
+                    Pattern::Unit(self.node_data(span))
                 } else {
                     let pattern = self.parse_pattern()?;
                     self.expect(TokenKind::CloseParen)?;
@@ -407,13 +409,13 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             TokenKind::Number => {
                 let number = self.advance();
                 let val = number.text.parse().unwrap();
-                (PatternVal::Number(val), number.span)
+                Pattern::Number(self.node_data(number.span), val)
             }
 
             TokenKind::True | TokenKind::False => {
                 let bool = self.advance();
                 let val = bool.kind == TokenKind::True;
-                (PatternVal::Bool(val), bool.span)
+                Pattern::Bool(self.node_data(bool.span), val)
             }
 
             _ => {
@@ -426,7 +428,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             }
         };
 
-        Ok(Pattern(pattern, self.node_data(span)))
+        Ok(pattern)
     }
 }
 

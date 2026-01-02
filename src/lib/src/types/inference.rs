@@ -405,15 +405,15 @@ fn generalize(ctx: &Context, ty: InferType) -> Result<Forall<InferType>, InferTy
 }
 
 /// Infers the type of an expression and adds it to the context.
-fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<InferType> {
+fn infer(ctx: &Context, expr: &Expr<Sem>) -> InferResult<InferType> {
     let ty: InferType = match expr {
         // Primitives are just their respective types.
-        ExprVal::Unit => InferType::Type(MonoType::Primitive(Primitive::Unit)),
-        ExprVal::Int(_) => InferType::Type(MonoType::Primitive(Primitive::Int)),
-        ExprVal::Bool(_) => InferType::Type(MonoType::Primitive(Primitive::Bool)),
-        ExprVal::String(_) => InferType::Type(MonoType::Primitive(Primitive::String)),
+        Expr::Unit(_) => InferType::Type(MonoType::Primitive(Primitive::Unit)),
+        Expr::Int(_, _) => InferType::Type(MonoType::Primitive(Primitive::Int)),
+        Expr::Bool(_, _) => InferType::Type(MonoType::Primitive(Primitive::Bool)),
+        Expr::String(_, _) => InferType::Type(MonoType::Primitive(Primitive::String)),
 
-        ExprVal::Var(var) => match ctx.lookup_symbol(*var) {
+        Expr::Var(_, var) => match ctx.lookup_symbol(*var) {
             // A Variable may be a forall generalization, so instantiate it if it is one,
             // otherwise just use the non-generalized type.
             Some(PolyType::Forall(f)) => f.instantiate(ctx),
@@ -421,7 +421,7 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
             None => panic!("no type for variable {var:?}")
         }
 
-        ExprVal::Bind(binding) => {
+        Expr::Bind(binding) => {
             // Infer the type of the value assigned to the binding using a forall level one higher than before.
             // This ensures that unsolved meta variables within the binding properly become type variables
             // in a forall generalization.
@@ -431,12 +431,12 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
             // it is guaranteed that all meta variables within the binding are in their final solved/unsolved
             // state after the binding's type has been inferred.
             match generalize(ctx, val_ty) {
-                Ok(forall) => match &binding.pattern.0 {
+                Ok(forall) => match &binding.pattern {
                     // Wildcard patterns just discard the value.
-                    PatternVal::Wildcard => {}
+                    Pattern::Wildcard(_) => {}
 
                     // In case the pattern is a variable, give it the generalized type.
-                    PatternVal::Var(pattern_var) => {
+                    Pattern::Var(_, pattern_var) => {
                         ctx.add_symbol_ty(*pattern_var, PolyType::Forall(forall)).unwrap();
                     }
 
@@ -444,14 +444,14 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
                     _ => {
                         let val_ty = forall.instantiate(ctx);
                         let pattern_ty = pattern(ctx, &binding.pattern)?;
-                        unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.1.span)?;
+                        unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.span())?;
                     }
                 }
 
                 // In case we did not generalize the type, just unify it with the pattern type.
                 Err(val_ty) => {
                     let pattern_ty = pattern(ctx, &binding.pattern)?;
-                    unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.1.span)?;
+                    unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.span())?;
                 }
             };
 
@@ -459,7 +459,7 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
             infer(ctx, &binding.expr)?
         }
 
-        ExprVal::Lambda(lambda) => {
+        Expr::Lambda(lambda) => {
             // Relatively simple, just assign the parameter a fresh meta variable and then infer the body.
 
             // Iterate through the lambda cases and successively build up the parameter and return types.
@@ -467,16 +467,16 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
             let ret_ty = InferType::Var(ctx.fresh_meta());
             for case in &lambda.cases {
                 let pattern_ty = pattern(ctx, &case.pattern)?;
-                unify(&pattern_ty, &param_ty, ctx.forall_level, case.pattern.1.span)?;
+                unify(&pattern_ty, &param_ty, ctx.forall_level, case.pattern.span())?;
 
                 let body_ty = infer(ctx, &case.body)?;
-                unify(&body_ty, &ret_ty, ctx.forall_level, case.body.2.span)?;
+                unify(&body_ty, &ret_ty, ctx.forall_level, case.body.span())?;
             }
 
             InferType::Type(MonoType::function(param_ty, ret_ty))
         }
 
-        ExprVal::Apply(app) => {
+        Expr::Apply(app) => {
             let target_ty = infer(ctx, &app.target)?;
             let arg_ty = infer(ctx, &app.arg)?;
             let ret_ty = InferType::Var(ctx.fresh_meta());
@@ -490,13 +490,13 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
                     ret_ty.clone()
                 )),
                 ctx.forall_level,
-                app.target.2.span
+                app.target.span()
             )?;
 
             ret_ty
         }
 
-        ExprVal::If(if_else) => {
+        Expr::If(if_else) => {
             let condition_ty = infer(ctx, &if_else.condition)?;
             let if_true_ty = infer(ctx, &if_else.if_true)?;
             let if_false_ty = infer(ctx, &if_else.if_false)?;
@@ -505,7 +505,7 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
                 &condition_ty,
                 &InferType::Type(MonoType::Primitive(Primitive::Bool)),
                 ctx.forall_level,
-                if_else.condition.2.span
+                if_else.condition.span()
             )?;
 
             unify(
@@ -513,8 +513,8 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
                 &if_false_ty,
                 ctx.forall_level,
                 TextSpan::between(
-                    if_else.if_true.2.span,
-                    if_else.if_false.2.span
+                    if_else.if_true.span(),
+                    if_else.if_false.span()
                 )
             )?;
 
@@ -522,27 +522,27 @@ fn infer(ctx: &Context, Expr(expr, _, node_data): &Expr<Sem>) -> InferResult<Inf
         }
     };
 
-    ctx.add_expr_ty(node_data.id, ty.clone()).unwrap();
+    ctx.add_expr_ty(expr.id(), ty.clone()).unwrap();
 
     Ok(ty)
 }
 
 /// Infers the suggested type of a pattern.
-fn pattern(ctx: &Context, Pattern(pattern, _): &Pattern<Sem>) -> InferResult<InferType> {
+fn pattern(ctx: &Context, pattern: &Pattern<Sem>) -> InferResult<InferType> {
     let ty = match pattern {
         // Wildcard patterns don't suggest any type in particular, so just return a fresh type variable.
-        PatternVal::Wildcard => InferType::Var(ctx.fresh_meta()),
+        Pattern::Wildcard(_) => InferType::Var(ctx.fresh_meta()),
 
         // Same as above with variables, they don't suggest any type in particular.
-        PatternVal::Var(var) => {
+        Pattern::Var(_, var) => {
             let meta_var = ctx.fresh_meta();
             ctx.add_symbol_ty(*var, PolyType::Type(InferType::Var(meta_var.clone()))).unwrap();
             InferType::Var(meta_var)
         }
 
-        PatternVal::Unit => InferType::Type(MonoType::Primitive(Primitive::Unit)),
-        PatternVal::Number(_) => InferType::Type(MonoType::Primitive(Primitive::Int)),
-        PatternVal::Bool(_) => InferType::Type(MonoType::Primitive(Primitive::Bool)),
+        Pattern::Unit(_) => InferType::Type(MonoType::Primitive(Primitive::Unit)),
+        Pattern::Number(_, _) => InferType::Type(MonoType::Primitive(Primitive::Int)),
+        Pattern::Bool(_, _) => InferType::Type(MonoType::Primitive(Primitive::Bool)),
     };
 
     Ok(ty)
@@ -592,24 +592,24 @@ fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
     let items = &ast.root().0;
 
     let mut bindings = HashMap::new();
-    for Item(item, _) in items {
+    for item in items {
         match item {
-            ItemVal::Binding(binding) => {
+            Item::Binding(binding) => {
                 let index = graph.add_node(binding.symbol);
                 bindings.insert(binding.symbol, index);
             }
         }
     }
 
-    for Item(item, data) in items {
+    for item in items {
         match item {
-            ItemVal::Binding(binding) => {
+            Item::Binding(binding) => {
                 let mut referencer = Referencer {
                     current: *bindings.get(&binding.symbol).unwrap(),
                     bindings: &bindings,
                     graph: &mut graph
                 };
-                referencer.binding(binding, *data);
+                referencer.binding(binding);
             }
         }
     }
@@ -674,58 +674,59 @@ impl Embedder {
         Root(typed_items, *node_data)
     }
 
-    fn item(&self, Item(item, node_data): &Item<Sem>) -> Item<Typed> {
+    fn item(&self, item: &Item<Sem>) -> Item<Typed> {
         let typed_item = match item {
-            ItemVal::Binding(function) => {
+            Item::Binding(function) => {
                 let typed_body = self.expr(&function.body);
-                ItemVal::Binding(Binding {
+                Item::Binding(Binding {
+                    data: function.data,
                     body: typed_body,
                     symbol: function.symbol
                 })
             }
         };
 
-        Item(typed_item, *node_data)
+        typed_item
     }
 
-    fn expr(&self, Expr(expr, _, node_data): &Expr<Sem>) -> Expr<Typed> {
-        let typed_expr = match expr {
-            ExprVal::Unit => ExprVal::Unit,
-            ExprVal::Int(x) => ExprVal::Int(*x),
-            ExprVal::Bool(x) => ExprVal::Bool(*x),
-            ExprVal::String(x) => ExprVal::String(x.clone()),
-            ExprVal::Var(s) => ExprVal::Var(*s),
+    fn expr(&self, expr: &Expr<Sem>) -> Expr<Typed> {
+        let ty = TypedExprData {
+            ty: self.get_expr_type(expr.id())
+        };
 
-            ExprVal::Bind(binding) => ExprVal::bind(Let {
+        match expr {
+            Expr::Unit(data) => Expr::Unit(data.with(ty)),
+            Expr::Int(data, x) => Expr::Int(data.with(ty), *x),
+            Expr::Bool(data, x) => Expr::Bool(data.with(ty), *x),
+            Expr::String(data, x) => Expr::String(data.with(ty), x.clone()),
+            Expr::Var(data, s) => Expr::Var(data.with(ty), *s),
+
+            Expr::Bind(binding) => Expr::bind(Let {
+                data: binding.data.with(ty),
                 pattern: self.pattern(&binding.pattern),
                 value: self.expr(&binding.value),
                 expr: self.expr(&binding.expr)
             }),
 
-            ExprVal::Lambda(lambda) => ExprVal::lambda(Lambda {
+            Expr::Lambda(lambda) => Expr::lambda(Lambda {
+                data: lambda.data.with(ty),
                 cases: lambda.cases.iter()
                     .map(|case| self.case(case)).collect()
             }),
 
-            ExprVal::Apply(application) => ExprVal::apply(Application {
+            Expr::Apply(application) => Expr::apply(Application {
+                data: application.data.with(ty),
                 target: self.expr(&application.target),
                 arg: self.expr(&application.arg)
             }),
 
-            ExprVal::If(if_else) => ExprVal::if_else(IfElse {
+            Expr::If(if_else) => Expr::if_else(IfElse {
+                data: if_else.data.with(ty),
                 condition: self.expr(&if_else.condition),
                 if_true: self.expr(&if_else.if_true),
                 if_false: self.expr(&if_else.if_false)
             })
-        };
-
-        let ty = self.get_expr_type(node_data.id);
-
-        Expr(
-            typed_expr,
-            TypedExprData { ty },
-            *node_data
-        )
+        }
     }
 
     fn case(&self, case: &Case<Sem>) -> Case<Typed> {
@@ -736,19 +737,14 @@ impl Embedder {
         }
     }
 
-    fn pattern(&self, Pattern(pattern, node_data): &Pattern<Sem>) -> Pattern<Typed> {
-        let typed_pattern = match pattern {
-            PatternVal::Wildcard => PatternVal::Wildcard,
-            PatternVal::Var(var) => PatternVal::Var(*var),
-            PatternVal::Unit => PatternVal::Unit,
-            PatternVal::Number(val) => PatternVal::Number(*val),
-            PatternVal::Bool(val) => PatternVal::Bool(*val),
-        };
-
-        Pattern(
-            typed_pattern,
-            *node_data
-        )
+    fn pattern(&self, pattern: &Pattern<Sem>) -> Pattern<Typed> {
+        match pattern {
+            Pattern::Wildcard(data) => Pattern::Wildcard(*data),
+            Pattern::Var(data, var) => Pattern::Var(*data, *var),
+            Pattern::Unit(data) => Pattern::Unit(*data),
+            Pattern::Number(data, val) => Pattern::Number(*data, *val),
+            Pattern::Bool(data, val) => Pattern::Bool(*data, *val),
+        }
     }
 }
 
@@ -790,7 +786,7 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
         // Infer the bodies of each binding.
         for item in &group {
             let decl = ast.symbols().get(*item).decl();
-            let ItemVal::Binding(binding) = &ast.get_node_as::<Item<Sem>>(decl).unwrap().0;
+            let Item::Binding(binding) = &ast.get_node_as::<Item<Sem>>(decl).unwrap();
 
             let ctx = ctx.extend();
 
@@ -801,7 +797,7 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
             // Important that the level here is 1,
             // since unification variables declared at the top-level
             // would otherwise not be able to have their levels lowerd properly.
-            unify(&body_ty, &InferType::Var(binding_var), 1, binding.body.2.span)?;
+            unify(&body_ty, &InferType::Var(binding_var), 1, binding.body.span())?;
         }
 
         // Try to generalize the binding types.

@@ -86,12 +86,12 @@ pub trait Visitor {
     }
 
     fn item(&mut self, item: &Item<Self::S>) {
-        match &item.0 {
-            ItemVal::Binding(binding) => self.binding(binding, item.1),
+        match item {
+            Item::Binding(binding) => self.binding(binding),
         }
     }
 
-    fn binding(&mut self, binding: &Binding<Self::S>, node_data: NodeData) {
+    fn binding(&mut self, binding: &Binding<Self::S>) {
         self.expr(&binding.body);
     }
 
@@ -153,27 +153,9 @@ pub trait Visitor {
 }
 
 pub fn default_visit_expr<V: Visitor + ?Sized>(visitor: &mut V, expr: &Expr<V::S>) {
-    let data = ExprDataBundle(&expr.1, expr.2);
-    match &expr.0 {
-        ExprVal::Unit => visitor.unit_expr(data),
-        ExprVal::Int(value) => visitor.int_expr(*value, data),
-        ExprVal::Bool(value) => visitor.bool_expr(*value, data),
-        ExprVal::String(value) => visitor.string_expr(value, data),
-        ExprVal::Var(symbol) => visitor.var_expr(symbol, data),
-        ExprVal::Bind(binding) => visitor.bind_expr(binding, data),
-        ExprVal::Lambda(lambda) => visitor.lambda_expr(lambda, data),
-        ExprVal::Apply(application) => visitor.apply_expr(application, data),
-        ExprVal::If(if_else) => visitor.if_else_expr(if_else, data),
-    }
+    todo!()
 }
 
 pub fn default_visit_pattern<V: Visitor + ?Sized>(visitor: &mut V, pattern: &Pattern<V::S>) {
-    let data = &pattern.1;
-    match &pattern.0 {
-        PatternVal::Wildcard => visitor.wildcard_pattern(*data),
-        PatternVal::Var(var) => visitor.var_pattern(var, *data),
-        PatternVal::Unit => visitor.unit_pattern(*data),
-        PatternVal::Number(val) => visitor.number_pattern(*val, *data),
-        PatternVal::Bool(val) => visitor.bool_pattern(*val, *data),
-    }
+    todo!()
 }

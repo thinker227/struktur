@@ -98,12 +98,12 @@ impl<'ast> Resolver<'ast> {
         Ok(Root(sem_items, *node_data))
     }
 
-    fn register_item(&mut self, Item(item, node_data): &Item<Parse>) -> SymResult<Symbol> {
+    fn register_item(&mut self, item: &Item<Parse>) -> SymResult<Symbol> {
         let data = match item {
-            ItemVal::Binding(binding) => {
+            Item::Binding(binding) => {
                 SymbolKind::Binding(BindingSymbol {
                     name: binding.symbol.clone(),
-                    decl: node_data.id,
+                    decl: binding.body.id(),
                     data: ()
                 })
             }
@@ -115,25 +115,25 @@ impl<'ast> Resolver<'ast> {
                 let prev = self.symbols.get(prev).decl();
                 let prev_span = self.ast.get_node(prev).span();
                 SymbolResError::DuplicateDeclaration {
-                    span: node_data.span,
+                    span: item.span(),
                     name,
                     previous_declaration: prev_span
                 }
             })
     }
 
-    fn item(&mut self, Item(item, node_data): &Item<Parse>, symbol: Symbol) -> SymResult<Item<Sem>> {
-        let val = match item {
-            ItemVal::Binding(binding) => {
-                let sem_function = self.binding(binding,* node_data, symbol)?;
-                ItemVal::Binding(sem_function)
+    fn item(&mut self, item: &Item<Parse>, symbol: Symbol) -> SymResult<Item<Sem>> {
+        let sem_item = match item {
+            Item::Binding(binding) => {
+                let sem_function = self.binding(binding, symbol)?;
+                Item::Binding(sem_function)
             }
         };
 
-        Ok(Item(val, *node_data))
+        Ok(sem_item)
     }
 
-    fn binding(&mut self, binding: &Binding<Parse>, _: NodeData, function_symbol: Symbol) -> SymResult<Binding<Sem>> {
+    fn binding(&mut self, binding: &Binding<Parse>, function_symbol: Symbol) -> SymResult<Binding<Sem>> {
         let sem_body = self.in_scope(|this| {
             // This technically doesn't need a scope,
             // but it's nice just to ensure that symbols don't accidentally leak out.
@@ -141,32 +141,33 @@ impl<'ast> Resolver<'ast> {
         })?;
 
         Ok(Binding {
+            data: binding.data,
             body: sem_body,
             symbol: function_symbol
         })
     }
 
-    fn expr(&mut self, Expr(expr, _, node_data): &Expr<Parse>) -> SymResult<Expr<Sem>> {
-        let val = match expr {
-            ExprVal::Unit => ExprVal::Unit,
+    fn expr(&mut self, expr: &Expr<Parse>) -> SymResult<Expr<Sem>> {
+        let sem_expr = match expr {
+            Expr::Unit(data) => Expr::Unit(data.with(())),
 
-            ExprVal::Int(x) => ExprVal::Int(*x),
+            Expr::Int(data, x) => Expr::Int(data.with(()), *x),
 
-            ExprVal::Bool(x) => ExprVal::Bool(*x),
+            Expr::Bool(data, x) => Expr::Bool(data.with(()), *x),
 
-            ExprVal::String(x) => ExprVal::String(x.clone()),
+            Expr::String(data, x) => Expr::String(data.with(()), x.clone()),
 
-            ExprVal::Var(var_name) => {
+            Expr::Var(data, var_name) => {
                 let var_symbol = self.look_up(var_name)
                     .ok_or_else(|| SymbolResError::Undeclared {
                         span: TextSpan::empty(0),
                         name: var_name.clone()
                     })?;
 
-                ExprVal::Var(var_symbol)
+                Expr::Var(data.with(()), var_symbol)
             }
 
-            ExprVal::Bind(binding) => {
+            Expr::Bind(binding) => {
                 let sem_value = self.expr(&binding.value)?;
 
                 let (sem_pattern, sem_expr) = self.in_scope(|this| {
@@ -175,14 +176,15 @@ impl<'ast> Resolver<'ast> {
                     Ok((sem_pattern, sem_expr))
                 })?;
 
-                ExprVal::bind(Let {
+                Expr::bind(Let {
+                    data: binding.data.with(()),
                     pattern: sem_pattern,
                     value: sem_value,
                     expr: sem_expr
                 })
             }
 
-            ExprVal::Lambda(lambda) => {
+            Expr::Lambda(lambda) => {
                 let mut sem_cases = Vec::with_capacity(lambda.cases.len());
 
                 for case in &lambda.cases {
@@ -190,27 +192,30 @@ impl<'ast> Resolver<'ast> {
                     sem_cases.push(sem_case)
                 }
 
-                ExprVal::lambda(Lambda {
+                Expr::lambda(Lambda {
+                    data: lambda.data.with(()),
                     cases: sem_cases
                 })
             }
 
-            ExprVal::Apply(application) => {
+            Expr::Apply(application) => {
                 let sem_target = self.expr(&application.target)?;
                 let sem_arg = self.expr(&application.arg)?;
 
-                ExprVal::apply(Application {
+                Expr::apply(Application {
+                    data: application.data.with(()),
                     target: sem_target,
                     arg: sem_arg
                 })
             }
 
-            ExprVal::If(if_else) => {
+            Expr::If(if_else) => {
                 let sem_condition = self.expr(&if_else.condition)?;
                 let sem_if_true = self.expr(&if_else.if_true)?;
                 let sem_if_false = self.expr(&if_else.if_false)?;
 
-                ExprVal::if_else(IfElse {
+                Expr::if_else(IfElse {
+                    data: if_else.data.with(()),
                     condition: sem_condition,
                     if_true: sem_if_true,
                     if_false: sem_if_false
@@ -218,7 +223,7 @@ impl<'ast> Resolver<'ast> {
             }
         };
 
-        Ok(Expr(val, (), *node_data))
+        Ok(sem_expr)
     }
 
     fn case(&mut self, case: &Case<Parse>) -> SymResult<Case<Sem>> {
@@ -235,29 +240,29 @@ impl<'ast> Resolver<'ast> {
         })
     }
 
-    fn pattern(&mut self, Pattern(pattern, node_data): &Pattern<Parse>) -> SymResult<Pattern<Sem>> {
-        let val = match pattern {
-            PatternVal::Wildcard => PatternVal::Wildcard,
+    fn pattern(&mut self, pattern: &Pattern<Parse>) -> SymResult<Pattern<Sem>> {
+        let sem_pattern = match pattern {
+            Pattern::Wildcard(data) => Pattern::Wildcard(*data),
 
-            PatternVal::Var(var) => {
+            Pattern::Var(data, var) => {
                 let var_data = VariableSymbol {
                     name: var.clone(),
-                    decl: node_data.id,
+                    decl: data.id,
                     data: ()
                 };
 
                 let var_symbol = self.register(var.clone(), SymbolKind::Var(var_data)).expect("todo");
 
-                PatternVal::Var(var_symbol)
+                Pattern::Var(*data, var_symbol)
             }
 
-            PatternVal::Unit => PatternVal::Unit,
+            Pattern::Unit(data) => Pattern::Unit(*data),
 
-            PatternVal::Number(val) => PatternVal::Number(*val),
+            Pattern::Number(data, val) => Pattern::Number(*data, *val),
 
-            PatternVal::Bool(val) => PatternVal::Bool(*val),
+            Pattern::Bool(data, val) => Pattern::Bool(*data, *val),
         };
 
-        Ok(Pattern(val, *node_data))
+        Ok(sem_pattern)
     }
 }

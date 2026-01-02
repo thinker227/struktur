@@ -1,6 +1,6 @@
 use std::{cell::OnceCell, collections::HashMap, fmt::Debug, ptr::NonNull};
 
-use crate::{ast::{ItemVal, Node, NodeId, Root, Visitor}, stage::Stage};
+use crate::{ast::{Item, Node, NodeId, Root, Visitor}, stage::Stage};
 
 // The value here has to be a pointer instead of a reference
 // because we want to have a reference into data owned by the container.
@@ -75,8 +75,8 @@ impl<S: Stage + 'static> Visitor for IdMapper<S> {
     fn item(&mut self, item: &super::Item<Self::S>) {
         self.add(item);
 
-        match &item.0 {
-            ItemVal::Binding(binding) => self.binding(binding, item.1),
+        match item {
+            Item::Binding(binding) => self.binding(binding),
         }
     }
 

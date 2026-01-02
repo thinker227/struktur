@@ -12,33 +12,33 @@ pub struct Root<S: Stage>(pub Vec<Item<S>>, pub NodeData);
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct Item<S: Stage>(pub ItemVal<S>, pub NodeData);
-
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub enum ItemVal<S: Stage> {
+pub enum Item<S: Stage> {
     Binding(Binding<S>),
 }
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct Binding<S: Stage> {
+    pub data: NodeData,
     pub symbol: S::Sym,
     pub body: Expr<S>,
 }
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct Expr<S: Stage>(pub ExprVal<S>, pub S::ExprData, pub NodeData);
+pub struct ExprData<S: Stage> {
+    pub node: NodeData,
+    pub expr: S::ExprData,
+}
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub enum ExprVal<S: Stage> {
-    Unit,
-    Int(u64),
-    Bool(bool),
-    String(String),
-    Var(S::Sym),
+pub enum Expr<S: Stage> {
+    Unit(ExprData<S>),
+    Int(ExprData<S>, u64),
+    Bool(ExprData<S>, bool),
+    String(ExprData<S>, String),
+    Var(ExprData<S>, S::Sym),
     Bind(Box<Let<S>>),
     Lambda(Box<Lambda<S>>),
     Apply(Box<Application<S>>),
@@ -48,6 +48,7 @@ pub enum ExprVal<S: Stage> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct Let<S: Stage> {
+    pub data: ExprData<S>,
     pub pattern: Pattern<S>,
     pub value: Expr<S>,
     pub expr: Expr<S>,
@@ -56,6 +57,7 @@ pub struct Let<S: Stage> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct Application<S: Stage> {
+    pub data: ExprData<S>,
     pub target: Expr<S>,
     pub arg: Expr<S>,
 }
@@ -63,6 +65,7 @@ pub struct Application<S: Stage> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct IfElse<S: Stage> {
+    pub data: ExprData<S>,
     pub condition: Expr<S>,
     pub if_true: Expr<S>,
     pub if_false: Expr<S>,
@@ -71,6 +74,7 @@ pub struct IfElse<S: Stage> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct Lambda<S: Stage> {
+    pub data: ExprData<S>,
     pub cases: Vec<Case<S>>,
 }
 
@@ -84,41 +88,46 @@ pub struct Case<S: Stage> {
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct Pattern<S: Stage>(pub PatternVal<S>, pub NodeData);
-
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub enum PatternVal<S: Stage> {
-    Wildcard,
-    Var(S::Sym),
-    Unit,
-    Number(u64),
-    Bool(bool),
+pub enum Pattern<S: Stage> {
+    Wildcard(NodeData),
+    Var(NodeData, S::Sym),
+    Unit(NodeData),
+    Number(NodeData, u64),
+    Bool(NodeData, bool),
 }
 
 /*-----------------*\
 |  Utility methods  |
 \*-----------------*/
 
-impl<S: Stage> From<Let<S>> for ExprVal<S> {
+impl<S: Stage> From<Let<S>> for Expr<S> {
     fn from(value: Let<S>) -> Self {
         Self::Bind(Box::new(value))
     }
 }
 
-impl<S: Stage> From<Lambda<S>> for ExprVal<S> {
+impl<S: Stage> From<Lambda<S>> for Expr<S> {
     fn from(value: Lambda<S>) -> Self {
         Self::Lambda(Box::new(value))
     }
 }
 
-impl<S: Stage> From<Application<S>> for ExprVal<S> {
+impl<S: Stage> From<Application<S>> for Expr<S> {
     fn from(value: Application<S>) -> Self {
         Self::Apply(Box::new(value))
     }
 }
 
-impl<S: Stage> ExprVal<S> {
+impl<S: Stage> ExprData<S> {
+    pub fn with<T: Stage>(&self, expr: T::ExprData) -> ExprData<T> {
+        ExprData {
+            node: self.node,
+            expr
+        }
+    }
+}
+
+impl<S: Stage> Expr<S> {
     pub fn bind(binding: Let<S>) -> Self {
         Self::Bind(Box::new(binding))
     }
@@ -152,7 +161,9 @@ impl<S: Stage + 'static> Node for Item<S> {
     type S = S;
 
     fn node_data(&self) -> NodeData {
-        self.1
+        match self {
+            Item::Binding(binding) => binding.data,
+        }
     }
 }
 
@@ -160,7 +171,17 @@ impl<S: Stage + 'static> Node for Expr<S> {
     type S = S;
 
     fn node_data(&self) -> NodeData {
-        self.2
+        match self {
+            Expr::Unit(expr_data) => expr_data.node,
+            Expr::Int(expr_data, _) => expr_data.node,
+            Expr::Bool(expr_data, _) => expr_data.node,
+            Expr::String(expr_data, _) => expr_data.node,
+            Expr::Var(expr_data, _) => expr_data.node,
+            Expr::Bind(binding) => binding.data.node,
+            Expr::Lambda(lambda) => lambda.data.node,
+            Expr::Apply(application) => application.data.node,
+            Expr::If(if_else) => if_else.data.node,
+        }
     }
 }
 
@@ -176,6 +197,12 @@ impl<S: Stage + 'static> Node for Pattern<S> {
     type S = S;
 
     fn node_data(&self) -> NodeData {
-        self.1
+        match self {
+            Pattern::Wildcard(node_data) =>  *node_data,
+            Pattern::Var(node_data, _) => *node_data,
+            Pattern::Unit(node_data) => *node_data,
+            Pattern::Number(node_data, _) => *node_data,
+            Pattern::Bool(node_data, _) => *node_data,
+        }
     }
 }
