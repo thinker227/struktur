@@ -1,6 +1,6 @@
 use std::{cell::OnceCell, collections::HashMap, fmt::Debug, ptr::NonNull};
 
-use crate::{ast::{Item, Node, NodeId, Root, Visitor}, stage::Stage};
+use crate::{ast::{Node, NodeId, Root, visit::{Drive, Visitor}}, stage::Stage};
 
 // The value here has to be a pointer instead of a reference
 // because we want to have a reference into data owned by the container.
@@ -40,7 +40,7 @@ impl<S: Stage + 'static> RootContainer<S> {
 
     fn map_ids(root: &Root<S>) -> Map {
         let mut mapper = IdMapper(Map::new());
-        mapper.root(root);
+        mapper.visit(root);
         mapper.0
     }
 }
@@ -55,32 +55,9 @@ impl<S: Stage> Debug for RootContainer<S> {
 
 struct IdMapper(Map);
 
-impl IdMapper {
-    fn add<N: Node>(&mut self, node: &N) {
-        self.0.insert(node.id(), NonNull::from_ref(node));
-    }
-}
-
 impl Visitor for IdMapper {
-    fn root(&mut self, root: &Root<Self::S>) {
-        self.add(root);
-
-        for item in &root.0 {
-            self.item(item);
-        }
-    }
-
-    fn item(&mut self, item: &super::Item<Self::S>) {
-        self.add(item);
-
-        match item {
-            Item::Binding(binding) => self.binding(binding),
-        }
-    }
-
-    fn expr(&mut self, expr: &super::Expr<Self::S>) {
-        self.add(expr);
-
-        super::default_visit_expr(self, expr);
+    fn visit(&mut self, item: &dyn Drive) {
+        self.0.insert(item.id(), NonNull::from_ref(item));
+        item.drive(self);
     }
 }

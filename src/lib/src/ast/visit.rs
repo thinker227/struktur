@@ -4,62 +4,62 @@
 
 use std::{any::Any, marker::PhantomData};
 
+use crate::ast::Node;
+
 /// Drives visitors through a type.
-pub trait Drive<V: Visitor>: Any {
+pub trait Drive: Node {
     /// Drives a visitor through the value.
-    fn drive(&self, visitor: &mut V);
+    fn drive(&self, visitor: &mut dyn Visitor);
 }
 
 /// Types which can visit different types.
 pub trait Visitor {
     /// Visits a value.
-    fn visit(&mut self, item: &dyn Drive<Self>);
+    fn visit(&mut self, item: &dyn Drive);
+
+    fn visit_many<'a, T: Drive>(&mut self, items: impl IntoIterator<Item = &'a T>) where Self: Sized {
+        for item in items {
+            self.visit(item);
+        }
+    }
 }
 
 /// Supports visiting values of a specific type.
-pub trait VisitT<T: Drive<Self>>: Visitor + Sized {
+pub trait VisitT<T: Drive>: Visitor + Sized {
     /// Visits a value.
     fn visit_t(&mut self, item: &T);
-}
-
-impl<V: Visitor, T: Drive<V>> Drive<V> for Vec<T> {
-    fn drive(&self, visitor: &mut V) {
-        for item in self {
-            item.drive(visitor);
-        }
-    }
 }
 
 // Can be useful to have these unit implementations.
 
 impl Visitor for () {
     #[inline]
-    fn visit(&mut self, _: &dyn Drive<Self>) {}
+    fn visit(&mut self, _: &dyn Drive) {}
 }
 
-impl<T: Drive<()>> VisitT<T> for () {
+impl<T: Drive> VisitT<T> for () {
     #[inline]
     fn visit_t(&mut self, _: &T) {}
 }
 
 trait Dispatch<V> {
-    fn dispatch(visitor: &mut V, item: &dyn Drive<V>);
+    fn dispatch(visitor: &mut V, item: &dyn Drive);
 }
 
-struct Continue;
+pub struct Continue;
 
-impl<V: Visitor + 'static> Dispatch<V> for Continue {
+impl<V: Visitor> Dispatch<V> for Continue {
     #[inline]
-    fn dispatch(visitor: &mut V, item: &dyn Drive<V>) {
+    fn dispatch(visitor: &mut V, item: &dyn Drive) {
         item.drive(visitor);
     }
 }
 
-struct Dispatcher<V, T, N>(PhantomData<(V, T, N)>);
+pub struct Dispatcher<V, T, N>(PhantomData<(V, T, N)>);
 
-impl<V: VisitT<T>, T: Drive<V>, N: Dispatch<V>> Dispatch<V> for Dispatcher<V, T, N> {
+impl<V: VisitT<T>, T: Drive, N: Dispatch<V>> Dispatch<V> for Dispatcher<V, T, N> {
     #[inline]
-    fn dispatch(visitor: &mut V, item: &dyn Drive<V>) {
+    fn dispatch(visitor: &mut V, item: &dyn Drive) {
         if let Some(item) = (item as &dyn Any).downcast_ref::<T>() {
             visitor.visit_t(item);
         } else {
@@ -88,19 +88,17 @@ pub struct VisitorBuilder<V, D>(PhantomData<(V, D)>);
 /// If no builder for a given type has been added when executing the visitor,
 /// the type's implementation of [drive](Drive::drive) will be called
 /// so that visiting may continue.
-#[allow(private_interfaces)]
 #[inline]
 pub const fn builder<V>() -> VisitorBuilder<V, Continue> {
     VisitorBuilder(PhantomData)
 }
 
-#[allow(private_interfaces)]
 impl<V, D> VisitorBuilder<V, D> {
     /// Adds a type to the builder.
     #[inline]
     pub const fn with<T>(&self) -> VisitorBuilder<V, Dispatcher<V, T, D>>
     where
-        T: Drive<V>,
+        T: Drive,
         V: VisitT<T>
     {
         VisitorBuilder(PhantomData)
@@ -111,7 +109,7 @@ impl<V, D> VisitorBuilder<V, D> {
 impl<V: Visitor, D: Dispatch<V>> VisitorBuilder<V, D> {
     /// Visits a value with the types registered in the builder.
     #[inline]
-    pub fn visit(&self, visitor: &mut V, item: &dyn Drive<V>) {
+    pub fn visit(self, visitor: &mut V, item: &dyn Drive) {
         D::dispatch(visitor, item);
     }
 }
@@ -121,11 +119,9 @@ impl<V: Visitor, D: Dispatch<V>> VisitorBuilder<V, D> {
 /// by the current type.
 #[macro_export]
 macro_rules! visit {
-    ($($t:ty),*) => {
-        fn visit(&mut self, item: &dyn $crate::ast::visit::Drive<Self>) {
-            $crate::ast::visit::builder::<Self>()
-            $( .with::<$t>() )*
-                .visit(self, item);
-        }
+    ($this:expr, $item:expr; $($t:ty),*) => {
+        $crate::ast::visit::builder::<Self>()
+        $( .with::<$t>() )*
+            .visit($this, $item)
     };
 }

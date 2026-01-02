@@ -14,7 +14,7 @@ use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::*, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}};
+use crate::{ast::{visit::{VisitT, Visitor}, *}, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}, visit};
 
 pub use self::var::MetaVar;
 
@@ -576,10 +576,14 @@ struct Referencer<'a> {
 }
 
 impl Visitor for Referencer<'_> {
-    type S = Sem;
+    fn visit(&mut self, item: &dyn visit::Drive) {
+        visit!(self, item; VarExpr<Sem>);
+    }
+}
 
-    fn var_expr(&mut self, symbol: &Symbol, _: ExprDataBundle<'_, Self::S>) {
-        if let Some(referenced) = self.bindings.get(symbol) {
+impl VisitT<VarExpr<Sem>> for Referencer<'_> {
+    fn visit_t(&mut self, item: &VarExpr<Sem>) {
+        if let Some(referenced) = self.bindings.get(&item.symbol) {
             self.graph.add_edge(self.current, *referenced, ());
         }
     }
@@ -609,7 +613,7 @@ fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
                     bindings: &bindings,
                     graph: &mut graph
                 };
-                referencer.binding(binding);
+                referencer.visit(binding);
             }
         }
     }
