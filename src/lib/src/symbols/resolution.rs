@@ -149,22 +149,36 @@ impl<'ast> Resolver<'ast> {
 
     fn expr(&mut self, expr: &Expr<Parse>) -> SymResult<Expr<Sem>> {
         let sem_expr = match expr {
-            Expr::Unit(data) => Expr::Unit(data.with(())),
+            Expr::Unit(unit) => Expr::Unit(UnitExpr {
+                data: unit.data.with(())
+            }),
 
-            Expr::Int(data, x) => Expr::Int(data.with(()), *x),
+            Expr::Int(int) => Expr::Int(IntExpr {
+                data: int.data.with(()),
+                val: int.val
+            }),
 
-            Expr::Bool(data, x) => Expr::Bool(data.with(()), *x),
+            Expr::Bool(bool) => Expr::Bool(BoolExpr {
+                data: bool.data.with(()),
+                val: bool.val
+            }),
 
-            Expr::String(data, x) => Expr::String(data.with(()), x.clone()),
+            Expr::String(string) => Expr::String(StringExpr {
+                data: string.data.with(()),
+                val: string.val.clone(),
+            }),
 
-            Expr::Var(data, var_name) => {
-                let var_symbol = self.look_up(var_name)
+            Expr::Var(var) => {
+                let var_symbol = self.look_up(&var.symbol)
                     .ok_or_else(|| SymbolResError::Undeclared {
                         span: TextSpan::empty(0),
-                        name: var_name.clone()
+                        name: var.symbol.clone()
                     })?;
 
-                Expr::Var(data.with(()), var_symbol)
+                Expr::Var(VarExpr {
+                    data: var.data.with(()),
+                    symbol: var_symbol,
+                })
             }
 
             Expr::Bind(binding) => {
@@ -242,25 +256,28 @@ impl<'ast> Resolver<'ast> {
 
     fn pattern(&mut self, pattern: &Pattern<Parse>) -> SymResult<Pattern<Sem>> {
         let sem_pattern = match pattern {
-            Pattern::Wildcard(data) => Pattern::Wildcard(*data),
+            Pattern::Wildcard(wildcard) => Pattern::Wildcard(wildcard.clone()),
 
-            Pattern::Var(data, var) => {
+            Pattern::Var(var) => {
                 let var_data = VariableSymbol {
-                    name: var.clone(),
-                    decl: data.id,
+                    name: var.symbol.clone(),
+                    decl: var.data.id,
                     data: ()
                 };
 
-                let var_symbol = self.register(var.clone(), SymbolKind::Var(var_data)).expect("todo");
+                let var_symbol = self.register(var.symbol.clone(), SymbolKind::Var(var_data)).expect("todo");
 
-                Pattern::Var(*data, var_symbol)
+                Pattern::Var(VarPattern {
+                    data: var.data,
+                    symbol: var_symbol
+                })
             }
 
-            Pattern::Unit(data) => Pattern::Unit(*data),
+            Pattern::Unit(unit) => Pattern::Unit(unit.clone()),
 
-            Pattern::Number(data, val) => Pattern::Number(*data, *val),
+            Pattern::Number(number) => Pattern::Number(number.clone()),
 
-            Pattern::Bool(data, val) => Pattern::Bool(*data, *val),
+            Pattern::Bool(bool) => Pattern::Bool(bool.clone()),
         };
 
         Ok(sem_pattern)

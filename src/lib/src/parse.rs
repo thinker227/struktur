@@ -257,7 +257,9 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                 if self.current().kind == TokenKind::CloseParen {
                     let close_paren = self.advance();
                     let span = TextSpan::between(open_paren.span, close_paren.span);
-                    Expr::Unit(self.expr_data(span))
+                    Expr::Unit(UnitExpr {
+                        data: self.expr_data(span)
+                    })
                 } else {
                     let expr = self.parse_expr()?;
                     self.expect(TokenKind::CloseParen)?;
@@ -268,26 +270,38 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             TokenKind::Number => {
                 let number = self.advance();
                 let val = number.text.parse().unwrap();
-                Expr::Int(self.expr_data(number.span), val)
+                Expr::Int(IntExpr {
+                    data: self.expr_data(number.span),
+                    val
+                })
             }
 
             TokenKind::True | TokenKind::False => {
                 let bool = self.advance();
                 let val = bool.kind == TokenKind::True;
-                Expr::Bool(self.expr_data(bool.span), val)
+                Expr::Bool(BoolExpr {
+                    data: self.expr_data(bool.span),
+                    val
+                })
             }
 
             TokenKind::String => {
                 let str = self.advance();
                 let text = str.text;
                 let val = text[1 .. text.len() - 1].to_owned();
-                Expr::String(self.expr_data(str.span), val)
+                Expr::String(StringExpr {
+                    data: self.expr_data(str.span),
+                    val
+                })
             }
 
             TokenKind::Name => {
                 let name = self.advance();
                 let var = name.text.to_owned();
-                Expr::Var(self.expr_data(name.span), var)
+                Expr::Var(VarExpr {
+                    data: self.expr_data(name.span),
+                    symbol: var
+                })
             }
 
             TokenKind::Let if ctx == ExprContext::Normal => {
@@ -385,12 +399,17 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         let pattern = match self.current().kind {
             TokenKind::Underscore => {
                 let underscore = self.advance();
-                Pattern::Wildcard(self.node_data(underscore.span))
+                Pattern::Wildcard(WildcardPattern {
+                    data: self.node_data(underscore.span)
+                })
             }
 
             TokenKind::Name => {
                 let name = self.advance();
-                Pattern::Var(self.node_data(name.span), name.text.to_owned())
+                Pattern::Var(VarPattern {
+                    data: self.node_data(name.span),
+                    symbol: name.text.to_owned()
+                })
             }
 
             TokenKind::OpenParen => {
@@ -398,7 +417,9 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
 
                 if let Some(close_paren) = self.advance_if(TokenKind::CloseParen) {
                     let span = TextSpan::between(open_paren.span, close_paren.span);
-                    Pattern::Unit(self.node_data(span))
+                    Pattern::Unit(UnitPattern {
+                        data: self.node_data(span)
+                    })
                 } else {
                     let pattern = self.parse_pattern()?;
                     self.expect(TokenKind::CloseParen)?;
@@ -409,13 +430,19 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             TokenKind::Number => {
                 let number = self.advance();
                 let val = number.text.parse().unwrap();
-                Pattern::Number(self.node_data(number.span), val)
+                Pattern::Number(NumberPattern {
+                    data: self.node_data(number.span),
+                    val
+                })
             }
 
             TokenKind::True | TokenKind::False => {
                 let bool = self.advance();
                 let val = bool.kind == TokenKind::True;
-                Pattern::Bool(self.node_data(bool.span), val)
+                Pattern::Bool(BoolPattern {
+                    data: self.node_data(bool.span),
+                    val
+                })
             }
 
             _ => {

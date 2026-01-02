@@ -34,15 +34,49 @@ pub struct ExprData<S: Stage> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub enum Expr<S: Stage> {
-    Unit(ExprData<S>),
-    Int(ExprData<S>, u64),
-    Bool(ExprData<S>, bool),
-    String(ExprData<S>, String),
-    Var(ExprData<S>, S::Sym),
+    Unit(UnitExpr<S>),
+    Int(IntExpr<S>),
+    Bool(BoolExpr<S>),
+    String(StringExpr<S>),
+    Var(VarExpr<S>),
     Bind(Box<Let<S>>),
     Lambda(Box<Lambda<S>>),
     Apply(Box<Application<S>>),
     If(Box<IfElse<S>>),
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct UnitExpr<S: Stage> {
+    pub data: ExprData<S>,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct IntExpr<S: Stage> {
+    pub data: ExprData<S>,
+    pub val: u64,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct BoolExpr<S: Stage> {
+    pub data: ExprData<S>,
+    pub val: bool,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct StringExpr<S: Stage> {
+    pub data: ExprData<S>,
+    pub val: String,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct VarExpr<S: Stage> {
+    pub data: ExprData<S>,
+    pub symbol: S::Sym,
 }
 
 #[derive(Derivative)]
@@ -89,11 +123,44 @@ pub struct Case<S: Stage> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub enum Pattern<S: Stage> {
-    Wildcard(NodeData),
-    Var(NodeData, S::Sym),
-    Unit(NodeData),
-    Number(NodeData, u64),
-    Bool(NodeData, bool),
+    Wildcard(WildcardPattern),
+    Var(VarPattern<S>),
+    Unit(UnitPattern),
+    Number(NumberPattern),
+    Bool(BoolPattern),
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct WildcardPattern {
+    pub data: NodeData,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct VarPattern<S: Stage> {
+    pub data: NodeData,
+    pub symbol: S::Sym,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct UnitPattern {
+    pub data: NodeData,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct NumberPattern {
+    pub data: NodeData,
+    pub val: u64,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct BoolPattern {
+    pub data: NodeData,
+    pub val: bool,
 }
 
 /*-----------------*\
@@ -172,11 +239,11 @@ impl<S: Stage + 'static> Node for Expr<S> {
 
     fn node_data(&self) -> NodeData {
         match self {
-            Expr::Unit(expr_data) => expr_data.node,
-            Expr::Int(expr_data, _) => expr_data.node,
-            Expr::Bool(expr_data, _) => expr_data.node,
-            Expr::String(expr_data, _) => expr_data.node,
-            Expr::Var(expr_data, _) => expr_data.node,
+            Expr::Unit(unit) => unit.data.node,
+            Expr::Int(int) => int.data.node,
+            Expr::Bool(bool) => bool.data.node,
+            Expr::String(string) => string.data.node,
+            Expr::Var(var) => var.data.node,
             Expr::Bind(binding) => binding.data.node,
             Expr::Lambda(lambda) => lambda.data.node,
             Expr::Apply(application) => application.data.node,
@@ -198,11 +265,11 @@ impl<S: Stage + 'static> Node for Pattern<S> {
 
     fn node_data(&self) -> NodeData {
         match self {
-            Pattern::Wildcard(node_data) =>  *node_data,
-            Pattern::Var(node_data, _) => *node_data,
-            Pattern::Unit(node_data) => *node_data,
-            Pattern::Number(node_data, _) => *node_data,
-            Pattern::Bool(node_data, _) => *node_data,
+            Pattern::Wildcard(wildcard) =>  wildcard.data,
+            Pattern::Var(var) => var.data,
+            Pattern::Unit(unit) => unit.data,
+            Pattern::Number(number) => number.data,
+            Pattern::Bool(bool) => bool.data,
         }
     }
 }

@@ -409,11 +409,11 @@ fn infer(ctx: &Context, expr: &Expr<Sem>) -> InferResult<InferType> {
     let ty: InferType = match expr {
         // Primitives are just their respective types.
         Expr::Unit(_) => InferType::Type(MonoType::Primitive(Primitive::Unit)),
-        Expr::Int(_, _) => InferType::Type(MonoType::Primitive(Primitive::Int)),
-        Expr::Bool(_, _) => InferType::Type(MonoType::Primitive(Primitive::Bool)),
-        Expr::String(_, _) => InferType::Type(MonoType::Primitive(Primitive::String)),
+        Expr::Int(_) => InferType::Type(MonoType::Primitive(Primitive::Int)),
+        Expr::Bool(_) => InferType::Type(MonoType::Primitive(Primitive::Bool)),
+        Expr::String(_) => InferType::Type(MonoType::Primitive(Primitive::String)),
 
-        Expr::Var(_, var) => match ctx.lookup_symbol(*var) {
+        Expr::Var(var) => match ctx.lookup_symbol(var.symbol) {
             // A Variable may be a forall generalization, so instantiate it if it is one,
             // otherwise just use the non-generalized type.
             Some(PolyType::Forall(f)) => f.instantiate(ctx),
@@ -436,8 +436,8 @@ fn infer(ctx: &Context, expr: &Expr<Sem>) -> InferResult<InferType> {
                     Pattern::Wildcard(_) => {}
 
                     // In case the pattern is a variable, give it the generalized type.
-                    Pattern::Var(_, pattern_var) => {
-                        ctx.add_symbol_ty(*pattern_var, PolyType::Forall(forall)).unwrap();
+                    Pattern::Var(pattern_var) => {
+                        ctx.add_symbol_ty(pattern_var.symbol, PolyType::Forall(forall)).unwrap();
                     }
 
                     // For any other patterns, instantiate the type we just generalized and unify it with the pattern type.
@@ -534,15 +534,15 @@ fn pattern(ctx: &Context, pattern: &Pattern<Sem>) -> InferResult<InferType> {
         Pattern::Wildcard(_) => InferType::Var(ctx.fresh_meta()),
 
         // Same as above with variables, they don't suggest any type in particular.
-        Pattern::Var(_, var) => {
+        Pattern::Var(var) => {
             let meta_var = ctx.fresh_meta();
-            ctx.add_symbol_ty(*var, PolyType::Type(InferType::Var(meta_var.clone()))).unwrap();
+            ctx.add_symbol_ty(var.symbol, PolyType::Type(InferType::Var(meta_var.clone()))).unwrap();
             InferType::Var(meta_var)
         }
 
         Pattern::Unit(_) => InferType::Type(MonoType::Primitive(Primitive::Unit)),
-        Pattern::Number(_, _) => InferType::Type(MonoType::Primitive(Primitive::Int)),
-        Pattern::Bool(_, _) => InferType::Type(MonoType::Primitive(Primitive::Bool)),
+        Pattern::Number(_) => InferType::Type(MonoType::Primitive(Primitive::Int)),
+        Pattern::Bool(_) => InferType::Type(MonoType::Primitive(Primitive::Bool)),
     };
 
     Ok(ty)
@@ -695,11 +695,25 @@ impl Embedder {
         };
 
         match expr {
-            Expr::Unit(data) => Expr::Unit(data.with(ty)),
-            Expr::Int(data, x) => Expr::Int(data.with(ty), *x),
-            Expr::Bool(data, x) => Expr::Bool(data.with(ty), *x),
-            Expr::String(data, x) => Expr::String(data.with(ty), x.clone()),
-            Expr::Var(data, s) => Expr::Var(data.with(ty), *s),
+            Expr::Unit(unit) => Expr::Unit(UnitExpr {
+                data: unit.data.with(ty)
+            }),
+            Expr::Int(int) => Expr::Int(IntExpr {
+                data: int.data.with(ty),
+                val: int.val
+            }),
+            Expr::Bool(bool) => Expr::Bool(BoolExpr {
+                data: bool.data.with(ty),
+                val: bool.val
+            }),
+            Expr::String(string) => Expr::String(StringExpr {
+                data: string.data.with(ty),
+                val: string.val.clone()
+            }),
+            Expr::Var(var) => Expr::Var(VarExpr {
+                data: var.data.with(ty),
+                symbol: var.symbol
+            }),
 
             Expr::Bind(binding) => Expr::bind(Let {
                 data: binding.data.with(ty),
@@ -739,11 +753,14 @@ impl Embedder {
 
     fn pattern(&self, pattern: &Pattern<Sem>) -> Pattern<Typed> {
         match pattern {
-            Pattern::Wildcard(data) => Pattern::Wildcard(*data),
-            Pattern::Var(data, var) => Pattern::Var(*data, *var),
-            Pattern::Unit(data) => Pattern::Unit(*data),
-            Pattern::Number(data, val) => Pattern::Number(*data, *val),
-            Pattern::Bool(data, val) => Pattern::Bool(*data, *val),
+            Pattern::Wildcard(data) => Pattern::Wildcard(data.clone()),
+            Pattern::Var(var) => Pattern::Var(VarPattern {
+                data: var.data,
+                symbol: var.symbol
+            }),
+            Pattern::Unit(unit) => Pattern::Unit(unit.clone()),
+            Pattern::Number(number) => Pattern::Number(number.clone()),
+            Pattern::Bool(bool) => Pattern::Bool(bool.clone()),
         }
     }
 }
