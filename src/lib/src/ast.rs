@@ -43,42 +43,6 @@ impl<S: Stage + 'static> Ast<S> {
     }
 }
 
-impl<S: Stage> From<Let<S>> for ExprVal<S> {
-    fn from(value: Let<S>) -> Self {
-        Self::Bind(Box::new(value))
-    }
-}
-
-impl<S: Stage> From<Lambda<S>> for ExprVal<S> {
-    fn from(value: Lambda<S>) -> Self {
-        Self::Lambda(Box::new(value))
-    }
-}
-
-impl<S: Stage> From<Application<S>> for ExprVal<S> {
-    fn from(value: Application<S>) -> Self {
-        Self::Apply(Box::new(value))
-    }
-}
-
-impl<S: Stage> ExprVal<S> {
-    pub fn bind(binding: Let<S>) -> Self {
-        Self::Bind(Box::new(binding))
-    }
-
-    pub fn lambda(lambda: Lambda<S>) -> Self {
-        Self::Lambda(Box::new(lambda))
-    }
-
-    pub fn apply(application: Application<S>) -> Self {
-        Self::Apply(Box::new(application))
-    }
-
-    pub fn if_else(if_else: IfElse<S>) -> Self {
-        Self::If(Box::new(if_else))
-    }
-}
-
 /// An ID for a node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
@@ -123,46 +87,6 @@ pub trait Node: Any {
     /// Gets the stage-specific associated node data for the node.
     fn data(&self) -> &<Self::S as Stage>::NodeData {
         &self.node_data().data
-    }
-}
-
-impl<S: Stage + 'static> Node for Root<S> {
-    type S = S;
-
-    fn node_data(&self) -> &NodeData<Self::S> {
-        &self.1
-    }
-}
-
-impl<S: Stage + 'static> Node for Item<S> {
-    type S = S;
-
-    fn node_data(&self) -> &NodeData<Self::S> {
-        &self.1
-    }
-}
-
-impl<S: Stage + 'static> Node for Expr<S> {
-    type S = S;
-
-    fn node_data(&self) -> &NodeData<Self::S> {
-        &self.2
-    }
-}
-
-impl<S: Stage + 'static> Node for Case<S> {
-    type S = S;
-
-    fn node_data(&self) -> &NodeData<Self::S> {
-        &self.data
-    }
-}
-
-impl<S: Stage + 'static> Node for Pattern<S> {
-    type S = S;
-
-    fn node_data(&self) -> &NodeData<Self::S> {
-        &self.1
     }
 }
 
