@@ -208,21 +208,17 @@ impl<S: Stage> Expr<S> {
     }
 }
 
-/*----------------------------*\
+/*-----------------------*\
 |  Trait implementations  |
-\*----------------------------*/
+\*-----------------------*/
 
 impl<S: Stage + 'static> Node for Root<S> {
-    type S = S;
-
     fn node_data(&self) -> NodeData {
         self.1
     }
 }
 
 impl<S: Stage + 'static> Node for Item<S> {
-    type S = S;
-
     fn node_data(&self) -> NodeData {
         match self {
             Item::Binding(binding) => binding.data,
@@ -231,8 +227,6 @@ impl<S: Stage + 'static> Node for Item<S> {
 }
 
 impl<S: Stage + 'static> Node for Expr<S> {
-    type S = S;
-
     fn node_data(&self) -> NodeData {
         match self {
             Expr::Unit(unit) => unit.data.node,
@@ -249,16 +243,12 @@ impl<S: Stage + 'static> Node for Expr<S> {
 }
 
 impl<S: Stage + 'static> Node for Case<S> {
-    type S = S;
-
     fn node_data(&self) -> NodeData {
         self.data
     }
 }
 
 impl<S: Stage + 'static> Node for Pattern<S> {
-    type S = S;
-
     fn node_data(&self) -> NodeData {
         match self {
             Pattern::Wildcard(wildcard) =>  wildcard.data,

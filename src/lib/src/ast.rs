@@ -34,11 +34,11 @@ impl<S: Stage + 'static> Ast<S> {
         &self.symbols
     }
 
-    pub fn get_node(&self, id: NodeId) -> &dyn Node<S = S> {
+    pub fn get_node(&self, id: NodeId) -> &dyn Node {
         self.container.get_node(id)
     }
 
-    pub fn get_node_as<N: Node<S = S>>(&self, id: NodeId) -> Option<&N> {
+    pub fn get_node_as<N: Node>(&self, id: NodeId) -> Option<&N> {
         (self.get_node(id) as &dyn Any).downcast_ref()
     }
 }
@@ -56,9 +56,6 @@ pub struct NodeData {
 
 /// An AST node type.
 pub trait Node: Any {
-    /// The stage of the node.
-    type S: Stage;
-
     /// Gets the node data for the node.
     fn node_data(&self) -> NodeData;
 

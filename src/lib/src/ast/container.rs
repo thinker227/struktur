@@ -6,13 +6,13 @@ use crate::{ast::{Item, Node, NodeId, Root, Visitor}, stage::Stage};
 // because we want to have a reference into data owned by the container.
 // Lifetimes cannot be bound to a specific field of a struct,
 // so we need to circumvent this using pointers.
-type Map<S> = HashMap<NodeId, NonNull<dyn Node<S = S>>>;
+type Map = HashMap<NodeId, NonNull<dyn Node>>;
 
 /// Container for the root of the AST.
 /// Additionally allows fetching references to nodes using IDs.
 pub struct RootContainer<S: Stage> {
     root: Root<S>,
-    refs: OnceCell<Map<S>>,
+    refs: OnceCell<Map>,
 }
 
 impl<S: Stage + 'static> RootContainer<S> {
@@ -27,7 +27,7 @@ impl<S: Stage + 'static> RootContainer<S> {
         &self.root
     }
 
-    pub fn get_node(&self, id: NodeId) -> &dyn Node<S = S> {
+    pub fn get_node(&self, id: NodeId) -> &dyn Node {
         let map = self.refs.get_or_init(|| Self::map_ids(&self.root));
         let ptr = *map.get(&id).unwrap();
 
@@ -38,7 +38,7 @@ impl<S: Stage + 'static> RootContainer<S> {
         unsafe { ptr.as_ref() }
     }
 
-    fn map_ids(root: &Root<S>) -> Map<S> {
+    fn map_ids(root: &Root<S>) -> Map {
         let mut mapper = IdMapper(Map::new());
         mapper.root(root);
         mapper.0
@@ -53,17 +53,15 @@ impl<S: Stage> Debug for RootContainer<S> {
     }
 }
 
-struct IdMapper<S>(Map<S>);
+struct IdMapper(Map);
 
-impl<S: Stage> IdMapper<S> {
-    fn add<N: Node<S = S>>(&mut self, node: &N) {
+impl IdMapper {
+    fn add<N: Node>(&mut self, node: &N) {
         self.0.insert(node.id(), NonNull::from_ref(node));
     }
 }
 
-impl<S: Stage + 'static> Visitor for IdMapper<S> {
-    type S = S;
-
+impl Visitor for IdMapper {
     fn root(&mut self, root: &Root<Self::S>) {
         self.add(root);
 
