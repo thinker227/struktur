@@ -21,9 +21,6 @@ use crate::{symbols::{Symbol, Symbols}, types::{TypedExprData, TypedBindingData,
 
 /// The compilation stage of an AST.
 pub trait Stage {
-    /// Additional data for the root AST.
-    type AstData: Debug + Clone;
-
     /// Additional data for nodes.
     type NodeData: Debug + Clone;
 
@@ -49,7 +46,6 @@ pub trait Stage {
 pub struct Parse;
 
 impl Stage for Parse {
-    type AstData = ();
     type NodeData = TextSpan;
     type Sym = String;
     type Syms = ();
@@ -62,7 +58,6 @@ impl Stage for Parse {
 pub struct Sem;
 
 impl Stage for Sem {
-    type AstData = ();
     type NodeData = TextSpan;
     type Sym = Symbol;
     type Syms = Symbols<Sem>;
@@ -75,7 +70,6 @@ impl Stage for Sem {
 pub struct Typed;
 
 impl Stage for Typed {
-    type AstData = ();
     type NodeData = TextSpan;
     type Sym = Symbol;
     type Syms = Symbols<Typed>;

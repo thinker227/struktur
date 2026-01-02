@@ -16,15 +16,13 @@ pub use self::tree::*;
 pub struct Ast<S: Stage> {
     container: RootContainer<S>,
     symbols: S::Syms,
-    data: S::AstData,
 }
 
 impl<S: Stage + 'static> Ast<S> {
-    pub fn new(root: Root<S>, symbols: S::Syms, data: S::AstData) -> Self {
+    pub fn new(root: Root<S>, symbols: S::Syms) -> Self {
         Self {
             container: RootContainer::new(root),
-            symbols,
-            data
+            symbols
         }
     }
 
@@ -34,10 +32,6 @@ impl<S: Stage + 'static> Ast<S> {
 
     pub fn symbols(&self) -> &S::Syms {
         &self.symbols
-    }
-
-    pub fn data(&self) -> &S::AstData {
-        &self.data
     }
 
     pub fn get_node(&self, id: NodeId) -> &dyn Node<S = S> {

@@ -9,7 +9,7 @@ pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
     let sem_root = resolver.root(ast.root())?;
     let symbols = resolver.symbols;
 
-    Ok(Ast::new(sem_root, symbols, ()))
+    Ok(Ast::new(sem_root, symbols))
 }
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
