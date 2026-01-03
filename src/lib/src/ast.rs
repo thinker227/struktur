@@ -7,7 +7,7 @@ pub mod visit;
 use std::any::Any;
 
 use derivative::Derivative;
-use crate::{ast::container::RootContainer, id::Id, stage::Stage, text_span::TextSpan};
+use crate::{ast::{container::RootContainer, visit::Drive}, id::Id, stage::Stage, text_span::TextSpan};
 
 pub use self::tree::*;
 
@@ -55,7 +55,7 @@ pub struct NodeData {
 }
 
 /// An AST node type.
-pub trait Node: Any {
+pub trait Node: Drive + Any {
     /// Gets the node data for the node.
     fn node_data(&self) -> NodeData;
 
