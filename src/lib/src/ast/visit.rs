@@ -4,10 +4,10 @@
 
 use std::{any::Any, marker::PhantomData};
 
-use crate::ast::Node;
+use crate::ast::AsNode;
 
 /// Drives visitors through a type.
-pub trait Drive: Node {
+pub trait Drive: AsNode {
     /// Drives a visitor through the value.
     fn drive(&self, visitor: &mut dyn Visitor);
 }

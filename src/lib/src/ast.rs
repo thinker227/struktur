@@ -68,3 +68,19 @@ pub trait Node: Any {
         self.node_data().span
     }
 }
+
+/// Types might implement [Node].
+pub trait AsNode: Any {
+    /// Gets the value as a `&dyn Node` if the type implements [Node].
+    #[inline]
+    fn as_node(&self) -> Option<&dyn Node> {
+        None
+    }
+}
+
+impl<N: Node> AsNode for N {
+    #[inline]
+    fn as_node(&self) -> Option<&dyn Node> {
+        Some(self)
+    }
+}

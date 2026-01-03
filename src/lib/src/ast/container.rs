@@ -57,7 +57,9 @@ struct IdMapper(Map);
 
 impl Visitor for IdMapper {
     fn visit(&mut self, item: &dyn Drive) {
-        self.0.insert(item.id(), NonNull::from_ref(item));
+        if let Some(node) = item.as_node() {
+            self.0.insert(node.id(), NonNull::from_ref(node));
+        }
         item.drive(self);
     }
 }
