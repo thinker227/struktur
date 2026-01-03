@@ -84,3 +84,7 @@ impl<N: Node> AsNode for N {
         Some(self)
     }
 }
+
+impl<T: 'static> AsNode for Vec<T> {}
+
+impl<T: 'static> AsNode for Option<T> {}

@@ -30,6 +30,22 @@ pub trait VisitT<T: Drive>: Visitor + Sized {
     fn visit_t(&mut self, item: &T);
 }
 
+impl<D: Drive> Drive for Vec<D> {
+    fn drive(&self, visitor: &mut dyn Visitor) {
+        for item in self {
+            visitor.visit(item);
+        }
+    }
+}
+
+impl<D: Drive> Drive for Option<D> {
+    fn drive(&self, visitor: &mut dyn Visitor) {
+        if let Some(item) = self {
+            visitor.visit(item);
+        }
+    }
+}
+
 // Can be useful to have these unit implementations.
 
 impl Visitor for () {

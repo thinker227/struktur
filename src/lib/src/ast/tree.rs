@@ -214,9 +214,7 @@ impl<S: Stage> Expr<S> {
 
 impl<S: Stage + 'static> Drive for Root<S> {
     fn drive(&self, visitor: &mut dyn Visitor) {
-        for item in &self.0 {
-            visitor.visit(item);
-        }
+        visitor.visit(&self.0);
     }
 }
 
@@ -280,9 +278,7 @@ impl<S: Stage + 'static> Drive for Let<S> {
 
 impl<S: Stage + 'static> Drive for Lambda<S> {
     fn drive(&self, visitor: &mut dyn Visitor) {
-        for case in &self.cases {
-            visitor.visit(case);
-        }
+        visitor.visit(&self.cases);
     }
 }
 
