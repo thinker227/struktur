@@ -356,7 +356,7 @@ impl<S: Stage + 'static> Node for Item<S> {
 
 impl<S: Stage + 'static> Node for Binding<S> {
     fn node_data(&self) -> NodeData {
-        todo!()
+        self.data
     }
 }
 

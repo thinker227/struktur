@@ -103,7 +103,7 @@ impl<'ast> Resolver<'ast> {
             Item::Binding(binding) => {
                 SymbolKind::Binding(BindingSymbol {
                     name: binding.symbol.clone(),
-                    decl: binding.body.id(),
+                    decl: binding.id(),
                     data: ()
                 })
             }

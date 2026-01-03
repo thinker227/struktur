@@ -807,7 +807,7 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
         // Infer the bodies of each binding.
         for item in &group {
             let decl = ast.symbols().get(*item).decl();
-            let Item::Binding(binding) = &ast.get_node_as::<Item<Sem>>(decl).unwrap();
+            let binding = &ast.get_node_as::<Binding<Sem>>(decl).unwrap();
 
             let ctx = ctx.extend();
 
