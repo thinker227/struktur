@@ -83,7 +83,7 @@ pub struct VarExpr<S: Stage> {
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct Let<S: Stage> {
     pub data: ExprData<S>,
-    pub pattern: Pattern<S>,
+    pub pattern: S::Pattern,
     pub value: Expr<S>,
     pub expr: Expr<S>,
 }
@@ -115,7 +115,7 @@ pub struct Lambda<S: Stage> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct Case<S: Stage> {
-    pub pattern: Pattern<S>,
+    pub pattern: S::Pattern,
     pub body: Expr<S>,
     pub data: NodeData,
 }

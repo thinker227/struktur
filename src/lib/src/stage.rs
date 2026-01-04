@@ -17,12 +17,15 @@
 
 use std::fmt::Debug;
 
-use crate::{symbols::{Symbol, Symbols}, types::{TypedExprData, TypedBindingData, TypedVariableData}};
+use crate::{ast::{self, visit::Drive}, patterns, symbols::{Symbol, Symbols}, types::{TypedBindingData, TypedExprData, TypedVariableData}};
 
 /// The compilation stage of an AST.
 pub trait Stage {
     /// Representation of symbols.
     type Sym: Debug + Clone;
+
+    /// Representation of patterns.
+    type Pattern: Debug + Clone + Drive;
 
     /// Global collection of symbols.
     type Syms: Debug;
@@ -44,6 +47,7 @@ pub struct Parse;
 
 impl Stage for Parse {
     type Sym = String;
+    type Pattern = ast::Pattern<Parse>;
     type Syms = ();
     type ExprData = ();
     type VarData = !;
@@ -55,6 +59,7 @@ pub struct Sem;
 
 impl Stage for Sem {
     type Sym = Symbol;
+    type Pattern = ast::Pattern<Sem>;
     type Syms = Symbols<Sem>;
     type ExprData = ();
     type VarData = ();
@@ -66,6 +71,7 @@ pub struct Typed;
 
 impl Stage for Typed {
     type Sym = Symbol;
+    type Pattern = patterns::Pattern;
     type Syms = Symbols<Typed>;
     type ExprData = TypedExprData;
     type VarData = TypedVariableData;

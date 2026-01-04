@@ -14,7 +14,7 @@ use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::{visit::{VisitT, Visitor}, *}, id::IdProvider, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}, visit};
+use crate::{ast::{visit::{VisitT, Visitor}, *}, id::IdProvider, patterns::compile_pattern, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}, visit};
 
 pub use self::var::MetaVar;
 
@@ -721,7 +721,7 @@ impl Embedder {
 
             Expr::Bind(binding) => Expr::bind(Let {
                 data: binding.data.with(ty),
-                pattern: self.pattern(&binding.pattern),
+                pattern: compile_pattern(&binding.pattern),
                 value: self.expr(&binding.value),
                 expr: self.expr(&binding.expr)
             }),
@@ -749,22 +749,9 @@ impl Embedder {
 
     fn case(&self, case: &Case<Sem>) -> Case<Typed> {
         Case {
-            pattern: self.pattern(&case.pattern),
+            pattern: compile_pattern(&case.pattern),
             body: self.expr(&case.body),
             data: case.data
-        }
-    }
-
-    fn pattern(&self, pattern: &Pattern<Sem>) -> Pattern<Typed> {
-        match pattern {
-            Pattern::Wildcard(data) => Pattern::Wildcard(data.clone()),
-            Pattern::Var(var) => Pattern::Var(VarPattern {
-                data: var.data,
-                symbol: var.symbol
-            }),
-            Pattern::Unit(unit) => Pattern::Unit(unit.clone()),
-            Pattern::Number(number) => Pattern::Number(number.clone()),
-            Pattern::Bool(bool) => Pattern::Bool(bool.clone()),
         }
     }
 }
