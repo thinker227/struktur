@@ -1,0 +1,11 @@
+{
+    "files.exclude": {
+        ".git/": true,
+        "target/": true,
+    },
+    "explorer.fileNesting.enabled": true,
+    "explorer.fileNesting.patterns": {
+        "Cargo.toml": "Cargo.lock,rust-toolchain*",
+    },
+    "explorer.sortOrder": "mixed",
+}
