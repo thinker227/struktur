@@ -77,7 +77,7 @@ let id : forall 'a. 'a -> 'a
 
 ### Higher-rank polymorphism
 
-Struktur's type system employs rank-2 predicative polymorphism. This means that a quantifier can occur nested within at most a single function arrow.
+Struktur's type system employs rank-2 predicative polymorphism. This means that a quantifier can occur nested to the left of at most a single function arrow.
 
 ```ocaml
 f : (forall 'a. 'a -> 'a) -> ()
