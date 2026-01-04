@@ -1,15 +1,18 @@
 - [x] Parser
 - [x] Symbol resolution
+  - [ ] Typed symbol IDs
+  - [ ] Top-level binding reference graph
 - [x] Type-checking + inference
+  - [ ] Bidirectional inference
+  - [ ] Constraint-based inference
 - [x] CPS conversion + JS codegen
 - [x] Compiler CLI
 - [x] Parsing string expressions
 - [x] Symbol resolution and type checking errors
-- [ ] Typed symbol IDs
-- [ ] Top-level binding reference graph
 - [ ] Main function
 - [ ] Pattern matching
 - [ ] Algebraic data types
 - [ ] Modules
+- [ ] Rank-2 types
 - [ ] Typeclasses
 - [ ] Algebraic effects
