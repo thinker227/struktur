@@ -1,6 +1,6 @@
 # Type system
 
-Struktur's type system is strongly based on [Hindley-Milner type inference](https://en.wikipedia.org/wiki/Hindley-Milner_type_system) and [System F](https://en.wikipedia.org/wiki/System_F). It is a rank-2 predicative type system, featuring [algebraic data types](#algebraic-data-types), [type functions](#type-functions), [universal quantification](#universal-quantification), [higher-kinded types](#higher-kinded-types) [typeclasses](#typeclasses), and [an effect system](#effect-system).
+Struktur's type system is strongly based on [Hindley-Milner type inference](https://en.wikipedia.org/wiki/Hindley-Milner_type_system) and [System F](https://en.wikipedia.org/wiki/System_F). It is a rank-2 predicative type system, featuring [algebraic data types](#algebraic-data-types), [first-class functions](#first-class-functions), [type functions](#type-functions), [universal quantification](#universal-quantification), [higher-kinded types](#higher-kinded-types) [typeclasses](#typeclasses), and [an effect system](#effect-system).
 
 ## Algebraic data types
 
@@ -54,6 +54,10 @@ type Bool = true | false
 ### `String`
 
 `String` is a sequence of characters (representation TBD).
+
+## First-class functions
+
+Functions can be passed as values to other functions. A function from a value of type `A` to a value of type `B` is written as `A -> B`.
 
 ## Type functions
 
