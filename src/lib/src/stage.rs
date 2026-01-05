@@ -71,7 +71,7 @@ pub struct Typed;
 
 impl Stage for Typed {
     type Sym = Symbol;
-    type Pattern = patterns::Pattern;
+    type Pattern = patterns::PatternTree;
     type Syms = Symbols<Typed>;
     type ExprData = TypedExprData;
     type VarData = TypedVariableData;
