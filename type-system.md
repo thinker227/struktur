@@ -90,7 +90,7 @@ f : (forall 'a. 'a -> 'a) -> ()
               ()
 ```
 
-The function `id` above is a function quantified over any type `'a`, itself passed as a parameter to the function `f`.
+The function `id` above is a function quantified over any type `'a`, itself passed as a parameter to the function `f`. Functions such as these have to be explicitly type-annotated using `forall.` since the quantifier cannot be inferred.
 
 A rank-2 type is one taking a quantified type, a rank-1 type is itself a quantified type, and a rank-0 type is a type with no quantifiers.
 
