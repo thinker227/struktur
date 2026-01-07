@@ -14,5 +14,6 @@
 - [ ] Algebraic data types
 - [ ] Modules
 - [ ] Rank-2 types
+- [ ] Higher-kinded types
 - [ ] Typeclasses
 - [ ] Algebraic effects
