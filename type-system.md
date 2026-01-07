@@ -1,6 +1,6 @@
 # Type system
 
-Struktur's type system is strongly based on [Hindley-Milner type inference](https://en.wikipedia.org/wiki/Hindley-Milner_type_system) and [System F](https://en.wikipedia.org/wiki/System_F). It is a rank-2 predicative type system, featuring [algebraic data types](#algebraic-data-types), [first-class functions](#first-class-functions), [type functions](#type-functions), [universal quantification](#universal-quantification), [higher-kinded types](#higher-kinded-types) [typeclasses](#typeclasses), and [an effect system](#effect-system).
+Struktur's type system is strongly based on [Hindley-Milner type inference](https://en.wikipedia.org/wiki/Hindley-Milner_type_system) and [System F](https://en.wikipedia.org/wiki/System_F). It is a [rank-2 predicative type system](#higher-rank-polymorphism), featuring [algebraic data types](#algebraic-data-types), [first-class functions](#first-class-functions), [type functions](#type-functions), [higher-kinded types](#higher-kinded-types), [universal quantification](#universal-quantification), [typeclasses](#typeclasses), and [an effect system](#effect-system).
 
 ## Algebraic data types
 
@@ -68,6 +68,25 @@ type Option 'a = Some { 'a }
                | None
 ```
 
+### Higher-kinded types
+
+A kind describes the "signature" of a type when viewed as a type function.
+
+```ocaml
+Int    : T
+Option : T -> T
+```
+
+A higher-kinded type is a higher-order function lifted into the universe of types. Just like `(A -> B) -> C` is a higher-order function—a function accepting a function—a higher-kinded type is a type function accepting a type function.
+
+```ocaml
+Functor : (T -> T) -> T -> Trait
+```
+
+The `Functor` higher-kinded type(class) conceptually mirrors the `map` function but for types.
+
+No universes beyond types and kinds are supported.
+
 ## Universal quantification
 
 A polymorphic function can be written as
@@ -99,25 +118,6 @@ rank2 : (forall 'a. 'a) -> ()
 rank1 : forall 'a. 'a
 rank0 : ()
 ```
-
-## Higher-kinded types
-
-A kind describes the "signature" of a type when viewed as a type function.
-
-```ocaml
-Int    : T
-Option : T -> T
-```
-
-A higher-kinded type is a higher-order function lifted into the universe of types.
-
-```ocaml
-Functor : (T -> T) -> T -> Trait
-```
-
-The `Functor` higher-kinded type(class) conceptually mirrors the `map` function but for types.
-
-No universes beyond types and kinds are supported.
 
 ## Typeclasses
 
