@@ -58,13 +58,22 @@ pub enum PatternTree {
 #[derive(Debug, Clone)]
 pub struct Match {
     /// The occurence to apply the pattern onto.
-    occurence: Occur,
+    pub occurence: Occur,
     /// The pattern to apply.
-    pattern: Pat,
+    pub pattern: Pat,
     /// The decision tree node to branch to in case the pattern succeds.
-    success: PatternTree,
+    pub success: PatternTree,
     /// The decision tree node to branch to in case the pattern fails.
-    failure: PatternTree,
+    pub failure: PatternTree,
+}
+
+/// A collection of actions and a root decision tree node.
+#[derive(Debug, Clone)]
+pub struct Cases<T> {
+    /// The root decision tree node.
+    pub root: PatternTree,
+    /// The actions referenced by the case indices in the decision tree.
+    pub actions: Vec<T>,
 }
 
 impl AsNode for PatternTree {}
@@ -73,7 +82,13 @@ impl Drive for PatternTree {
     fn drive(&self, _: &mut dyn Visitor) {}
 }
 
+impl<T: 'static> AsNode for Cases<T> {}
+
+impl<T: 'static> Drive for Cases<T> {
+    fn drive(&self, _: &mut dyn Visitor) {}
+}
+
 /// Compiles a semantically resolved pattern into a decision tree.
-pub fn compile_pattern(pattern: &ast::Pattern<Sem>) -> PatternTree {
+pub fn compile_pattern(cases: &[&ast::Pattern<Sem>]) -> PatternTree {
     todo!()
 }

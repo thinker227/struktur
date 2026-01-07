@@ -109,7 +109,7 @@ pub struct IfElse<S: Stage> {
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct Lambda<S: Stage> {
     pub data: ExprData<S>,
-    pub cases: Vec<Case<S>>,
+    pub cases: S::Cases,
 }
 
 #[derive(Derivative)]

@@ -14,7 +14,7 @@ use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::{visit::{VisitT, Visitor}, *}, id::IdProvider, patterns::compile_pattern, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}, visit};
+use crate::{ast::{visit::{VisitT, Visitor}, *}, id::IdProvider, patterns::{Cases, compile_pattern}, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}, visit};
 
 pub use self::var::MetaVar;
 
@@ -679,7 +679,7 @@ impl Embedder {
     }
 
     fn item(&self, item: &Item<Sem>) -> Item<Typed> {
-        let typed_item = match item {
+        match item {
             Item::Binding(function) => {
                 let typed_body = self.expr(&function.body);
                 Item::Binding(Binding {
@@ -688,9 +688,7 @@ impl Embedder {
                     symbol: function.symbol
                 })
             }
-        };
-
-        typed_item
+        }
     }
 
     fn expr(&self, expr: &Expr<Sem>) -> Expr<Typed> {
@@ -721,16 +719,28 @@ impl Embedder {
 
             Expr::Bind(binding) => Expr::bind(Let {
                 data: binding.data.with(ty),
-                pattern: compile_pattern(&binding.pattern),
+                pattern: compile_pattern(&[&binding.pattern]),
                 value: self.expr(&binding.value),
                 expr: self.expr(&binding.expr)
             }),
 
-            Expr::Lambda(lambda) => Expr::lambda(Lambda {
-                data: lambda.data.with(ty),
-                cases: lambda.cases.iter()
-                    .map(|case| self.case(case)).collect()
-            }),
+            Expr::Lambda(lambda) => {
+                let cases = lambda.cases.iter()
+                    .map(|x| &x.pattern)
+                    .collect::<Vec<_>>();
+
+                let pattern = compile_pattern(&cases);
+
+                Expr::lambda(Lambda {
+                    data: lambda.data.with(ty),
+                    cases: Cases {
+                        root: pattern,
+                        actions: lambda.cases.iter()
+                            .map(|x| self.expr(&x.body))
+                            .collect()
+                    }
+                })
+            }
 
             Expr::Apply(application) => Expr::apply(Application {
                 data: application.data.with(ty),
@@ -744,14 +754,6 @@ impl Embedder {
                 if_true: self.expr(&if_else.if_true),
                 if_false: self.expr(&if_else.if_false)
             })
-        }
-    }
-
-    fn case(&self, case: &Case<Sem>) -> Case<Typed> {
-        Case {
-            pattern: compile_pattern(&case.pattern),
-            body: self.expr(&case.body),
-            data: case.data
         }
     }
 }
