@@ -30,16 +30,41 @@ pub struct Wildcard {
 /// Describes a sequence of operations required to get to the value
 /// being matched on by a column of patterns.
 #[derive(Debug, Clone)]
-pub struct Occur;
+pub enum Occur {
+    /// Match on the value of the target of the pattern matching.
+    Identity,
+}
 
 /// An action executed by a row of patterns.
 #[derive(Debug, Clone)]
-pub struct Action;
+pub struct Action {
+    /// The index of the pattern case.
+    /// Used to look up the expression to resolve the pattern to.
+    pub case_index: usize,
+}
 
-/// A compiled pattern decision tree.
+/// A node in a compiled pattern decision tree.
 #[derive(Debug, Clone)]
-pub struct PatternTree {
+pub enum PatternTree {
+    /// Match a pattern on an occurence and branch to a different node depending on the outcome.
+    Match(Box<Match>),
+    /// Perform a terminal action.
+    Action(Action),
+    /// Terminal failure of the entire pattern.
+    Failure,
+}
 
+/// An application of a pattern onto an occurence.
+#[derive(Debug, Clone)]
+pub struct Match {
+    /// The occurence to apply the pattern onto.
+    occurence: Occur,
+    /// The pattern to apply.
+    pattern: Pat,
+    /// The decision tree node to branch to in case the pattern succeds.
+    success: PatternTree,
+    /// The decision tree node to branch to in case the pattern fails.
+    failure: PatternTree,
 }
 
 impl AsNode for PatternTree {}
