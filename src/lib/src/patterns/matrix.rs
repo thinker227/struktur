@@ -14,13 +14,12 @@ pub struct Matrix {
 }
 
 impl Matrix {
-    pub fn new(patterns: Vec<Pat>, occurs: Vec<Occur>, actions: Vec<Action>) -> Self {
-        assert_eq!(patterns.len(), occurs.len() * actions.len());
-
+    /// Constructs a new matrix with no rows from an occurence vector.
+    pub fn new(occurs: Vec<Occur>) -> Self {
         Self {
-            patterns,
+            patterns: Vec::new(),
             occurs,
-            actions
+            actions: Vec::new()
         }
     }
 
@@ -30,8 +29,19 @@ impl Matrix {
         SubMatrix {
             patterns: &self.patterns,
             occurs: &self.occurs,
-            actions: &self.actions
+            actions: &self.actions,
+            col_from_start: 0,
+            col_from_end: 0
         }
+    }
+
+    /// Adds a row to the matrix. The amount of patterns in the row
+    /// has to be the same as the length of the occurence vector.
+    pub fn push_row(&mut self, action: Action, patterns: Vec<Pat>) {
+        assert_eq!(patterns.len(), self.occurs.len());
+
+        self.actions.push(action);
+        self.patterns.extend_from_slice(&patterns);
     }
 
     /// Specializes every pattern in a column by replacing it
@@ -72,6 +82,10 @@ impl Matrix {
     ///
     /// Returns a new owned matrix.
     pub fn swap(&mut self, n_a: usize, n_b: usize) {
+        if n_a == n_b {
+            return;
+        }
+
         self.occurs.swap(n_a, n_b);
 
         for i in 0..self.height() {
@@ -101,10 +115,12 @@ pub struct SubMatrix<'mat> {
     patterns: &'mat [Pat],
     occurs: &'mat [Occur],
     actions: &'mat [Action],
+    col_from_start: usize,
+    col_from_end: usize,
 }
 
 impl SubMatrix<'_> {
-    pub fn to_matrix(&self) -> Matrix {
+    pub fn to_owned(self) -> Matrix {
         Matrix {
             patterns: self.patterns.to_owned(),
             occurs: self.occurs.to_owned(),
@@ -113,7 +129,7 @@ impl SubMatrix<'_> {
     }
 
     /// Slices the rows of the matrix.
-    pub fn slice<R: RangeBounds<usize>>(&self, range: R) -> Self {
+    pub fn slice_rows<R: RangeBounds<usize>>(&self, range: R) -> Self {
         let start = match range.start_bound() {
             Bound::Included(n) => *n,
             Bound::Excluded(n) => *n + 1,
@@ -125,19 +141,57 @@ impl SubMatrix<'_> {
             Bound::Unbounded => self.height()
         };
 
-        let from = self.width() * start;
-        let to = self.width() * end;
+        let height = self.height();
+        assert!(start < height);
+        assert!(end < height);
+        assert!(end >= start);
+
+        let from = self.real_width() * start;
+        let to = self.real_width() * end;
 
         Self {
             patterns: &self.patterns[from..to],
-            occurs: &self.occurs,
-            actions: &self.actions[start..end]
+            occurs: self.occurs,
+            actions: &self.actions[start..end],
+            col_from_start: self.col_from_start,
+            col_from_end: self.col_from_end
         }
+    }
+
+    /// Slices the columns of the matrix.
+    pub fn slice_columns<R: RangeBounds<usize>>(&self, range: R) -> Self {
+        let start = match range.start_bound() {
+            Bound::Included(n) => *n,
+            Bound::Excluded(n) => *n + 1,
+            Bound::Unbounded => 0
+        };
+        let end = match range.end_bound() {
+            Bound::Included(n) => *n + 1,
+            Bound::Excluded(n) => *n,
+            Bound::Unbounded => self.width()
+        };
+
+        let width = self.width();
+        assert!(start < width);
+        assert!(end < width);
+        assert!(end >= start);
+
+        Self {
+            occurs: self.occurs,
+            actions: self.actions,
+            patterns: self.patterns,
+            col_from_start: self.col_from_start + start,
+            col_from_end: self.col_from_end + (width - end)
+        }
+    }
+
+    fn real_width(&self) -> usize {
+        self.occurs.len()
     }
 
     #[inline]
     pub fn width(&self) -> usize {
-        self.occurs.len()
+        self.real_width() - self.col_from_start - self.col_from_end
     }
 
     #[inline]
@@ -145,14 +199,22 @@ impl SubMatrix<'_> {
         self.actions.len()
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.width() == 0
+    }
+
     pub fn pattern(&self, n: usize, m: usize) -> &Pat {
-        let index = self.width() * m + n;
+        let index = self.width() * m + n + self.col_from_start;
         &self.patterns[index]
     }
 
     /// Gets a column of the matrix.
     pub fn column(&self, n: usize) -> Column<'_> {
-        Column { mat: *self, n }
+        Column {
+            mat: *self,
+            n: n + self.col_from_start
+        }
     }
 
     /// Gets a row of the matrix.
@@ -174,7 +236,7 @@ impl<'mat> Column<'mat> {
     }
 
     pub fn pattern(&self, m: usize) -> &'mat Pat {
-        let index = self.mat.width() * m + self.n;
+        let index = self.mat.real_width() * m + self.n;
         &self.mat.patterns[index]
     }
 
@@ -192,7 +254,7 @@ impl<'mat> IntoIterator for Column<'mat> {
         Iter {
             mat: self.mat,
             start: self.n,
-            step: self.mat.width(),
+            step: self.mat.real_width(),
             len: self.len(),
             i: 0
         }
@@ -212,7 +274,9 @@ impl<'mat> Row<'mat> {
     }
 
     pub fn pattern(&self, n: usize) -> &'mat Pat {
-        let index = self.mat.height() * self.m + n;
+        assert!(n < self.mat.width());
+
+        let index = self.mat.height() * self.m + n + self.mat.col_from_start;
         &self.mat.patterns[index]
     }
 
@@ -229,7 +293,7 @@ impl<'mat> IntoIterator for Row<'mat> {
     fn into_iter(self) -> Self::IntoIter {
         Iter {
             mat: self.mat,
-            start: self.m * self.mat.width(),
+            start: self.m * self.mat.real_width() + self.mat.col_from_start,
             step: 1,
             len: self.len(),
             i: 0
@@ -258,5 +322,185 @@ impl<'mat> Iterator for Iter<'mat> {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper macro to assert the items yielded by an iterator.
+    macro_rules! assert_iter {
+        ($iter:expr; $($value:expr),*) => {
+            {
+                let mut iter = IntoIterator::into_iter($iter);
+                $(
+                    assert_eq!(iter.next(), Some($value));
+                )*
+                assert_eq!(iter.next(), None);
+            }
+        };
+    }
+
+    #[test]
+    fn swap() {
+        let mut matrix = Matrix::new(vec![Occur::Identity; 2]);
+        matrix.push_row(
+            Action { case_index: 0 },
+            vec![Pat::Number(0), Pat::Number(1)]
+        );
+        matrix.push_row(
+            Action { case_index: 1 },
+            vec![Pat::Number(2), Pat::Number(3)]
+        );
+
+        matrix.swap(0, 1);
+
+        let matrix = matrix.borrow();
+
+        assert_iter![
+            matrix.row(0);
+            &Pat::Number(1),
+            &Pat::Number(0)
+        ];
+        assert_iter![
+            matrix.row(1);
+            &Pat::Number(3),
+            &Pat::Number(2)
+        ];
+    }
+
+    #[test]
+    fn slice_rows() {
+        let mut matrix = Matrix::new(vec![Occur::Identity; 2]);
+        matrix.push_row(
+            Action { case_index: 0 },
+            vec![Pat::Number(0), Pat::Number(1)]
+        );
+        matrix.push_row(
+            Action { case_index: 1 },
+            vec![Pat::Number(2), Pat::Number(3)]
+        );
+        matrix.push_row(
+            Action { case_index: 2 },
+            vec![Pat::Number(4), Pat::Number(5)]
+        );
+        matrix.push_row(
+            Action { case_index: 3 },
+            vec![Pat::Number(6), Pat::Number(7)]
+        );
+        matrix.push_row(
+            Action { case_index: 4 },
+            vec![Pat::Number(8), Pat::Number(9)]
+        );
+
+        let matrix = matrix.borrow().slice_rows(1..=3);
+
+        assert_iter![
+            matrix.row(0);
+            &Pat::Number(2),
+            &Pat::Number(3)
+        ];
+        assert_iter![
+            matrix.row(1);
+            &Pat::Number(4),
+            &Pat::Number(5)
+        ];
+        assert_iter![
+            matrix.row(2);
+            &Pat::Number(6),
+            &Pat::Number(7)
+        ];
+
+        assert_iter![
+            matrix.column(0);
+            &Pat::Number(2),
+            &Pat::Number(4),
+            &Pat::Number(6)
+        ];
+        assert_iter![
+            matrix.column(1);
+            &Pat::Number(3),
+            &Pat::Number(5),
+            &Pat::Number(7)
+        ];
+
+        let matrix = matrix.slice_rows(1..=1);
+
+        assert_iter![
+            matrix.row(0);
+            &Pat::Number(4),
+            &Pat::Number(5)
+        ];
+
+        assert_iter![
+            matrix.column(0);
+            &Pat::Number(4)
+        ];
+        assert_iter![
+            matrix.column(1);
+            &Pat::Number(5)
+        ];
+    }
+
+    #[test]
+    fn slice_cols() {
+        let mut matrix = Matrix::new(vec![Occur::Identity; 5]);
+        matrix.push_row(
+            Action { case_index: 0 },
+            vec![Pat::Number(1), Pat::Number(2), Pat::Number(3), Pat::Number(4), Pat::Number(5)]
+        );
+        matrix.push_row(
+            Action { case_index: 1 },
+            vec![Pat::Number(6), Pat::Number(7), Pat::Number(8), Pat::Number(9), Pat::Number(10)]
+        );
+
+        let matrix = matrix.borrow().slice_columns(1..=3);
+
+        assert_iter![
+            matrix.row(0);
+            &Pat::Number(2),
+            &Pat::Number(3),
+            &Pat::Number(4)
+        ];
+        assert_iter![
+            matrix.row(1);
+            &Pat::Number(7),
+            &Pat::Number(8),
+            &Pat::Number(9)
+        ];
+
+        assert_iter![
+            matrix.column(0);
+            &Pat::Number(2),
+            &Pat::Number(7)
+        ];
+        assert_iter![
+            matrix.column(1);
+            &Pat::Number(3),
+            &Pat::Number(8)
+        ];
+        assert_iter![
+            matrix.column(2);
+            &Pat::Number(4),
+            &Pat::Number(9)
+        ];
+
+        let matrix = matrix.slice_columns(1..=1);
+
+        assert_iter!(
+            matrix.row(0);
+            &Pat::Number(3)
+        );
+        assert_iter!(
+            matrix.row(1);
+            &Pat::Number(8)
+        );
+
+        assert_iter!(
+            matrix.column(0);
+            &Pat::Number(3),
+            &Pat::Number(8)
+        );
     }
 }
