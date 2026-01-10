@@ -1,6 +1,6 @@
 # Type system
 
-Struktur's type system is strongly based on [Hindley-Milner type inference](https://en.wikipedia.org/wiki/Hindley-Milner_type_system) and [System F](https://en.wikipedia.org/wiki/System_F). It is a [rank-2 predicative type system](#higher-rank-polymorphism), featuring [algebraic data types](#algebraic-data-types), [first-class functions](#first-class-functions), [type functions](#type-functions), [higher-kinded types](#higher-kinded-types), [universal quantification](#universal-quantification), [typeclasses](#typeclasses), and [an effect system](#effect-system).
+Struktur's type system is strongly based on [Hindley-Milner type inference](https://en.wikipedia.org/wiki/Hindley-Milner_type_system) and [System F](https://en.wikipedia.org/wiki/System_F). It is a [rank-2 predicative type system](#higher-rank-polymorphism), featuring [algebraic data types](#algebraic-data-types), [first-class functions](#first-class-functions), [laziness](#laziness), [type functions](#type-functions), [higher-kinded types](#higher-kinded-types), [universal quantification](#universal-quantification), [typeclasses](#typeclasses), and [an effect system](#effect-system).
 
 ## Algebraic data types
 
@@ -58,6 +58,14 @@ type Bool = true | false
 ## First-class functions
 
 Functions can be passed as values to other functions. A function from a value of type `A` to a value of type `B` is written as `A -> B`.
+
+## Laziness
+
+Struktur is *strict* by default, meaning that expressions are evaluated eagerly. In other words, if `x` evaluates to `⊥`, `f x` always evaluates to `⊥`.
+
+Strictness can be opted out of by using the `~` type operator. `~T` is the type of a lazily evaluated `T`.
+
+Notably, `A -> ~B` is different from `~(A -> B)`. The former is a function from `A` to a lazily evaluated `B` (i.e. the computation the function performs is lazy), while the latter is a lazily evaluated function from `A` to `B` (i.e. the computation used to compute the function itself is lazy).
 
 ## Type functions
 

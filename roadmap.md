@@ -17,4 +17,5 @@
 - [ ] Rank-2 types
 - [ ] Higher-kinded types
 - [ ] Typeclasses
+- [ ] Lazy type
 - [ ] Algebraic effects
