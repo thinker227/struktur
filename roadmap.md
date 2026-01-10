@@ -13,6 +13,7 @@
 - [ ] Pattern matching
 - [ ] Algebraic data types
 - [ ] Modules
+- [ ] REPL
 - [ ] Rank-2 types
 - [ ] Higher-kinded types
 - [ ] Typeclasses
