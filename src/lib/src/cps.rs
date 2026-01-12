@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use crate::{ast, id::{Id, IdProvider}, patterns::{Constructor, Decision}, stage::Typed, symbols::Symbol};
+use crate::{ast, id::{Id, IdProvider}, patterns::{self, Constructor, Decision}, stage::Typed, symbols::Symbol};
 
 /// A binding.
 #[derive(Debug, Clone)]
@@ -121,8 +121,50 @@ static CONTINUATION_PROVIDER: IdProvider<Continuation> = IdProvider::new(Continu
 
 static GEN_PROVIDER: IdProvider<GenSymbol> = IdProvider::new(GenSymbol);
 
-fn multi_pattern(node: &Decision, actions: &[Complex]) -> Lambda {
-    todo!()
+fn fold_bindings(action: Complex, value: Atomic, bindings: &[patterns::Binding]) -> Complex {
+    bindings.iter().fold(action, |acc, binding| {
+        // TODO: This only applies since there are no constructors taking arguments currently.
+        assert_eq!(binding.value.path(), &[]);
+
+        Complex::Let(Box::new(Let {
+            symbol: binding.variable,
+            // This currently doesn't make a whole lot of sense since "each" binding will get the same value,
+            // but currently there can only be a single binding per pattern, so this does makes sense.
+            value: value.clone(),
+            expr: acc
+        }))
+    })
+}
+
+fn multi_pattern(node: &Decision, actions: &[Complex], value: Atomic) -> Complex {
+    match node {
+        Decision::Success(body) => {
+            let action = actions[body.action].clone();
+            fold_bindings(action, value, &body.bindings)
+        }
+
+        Decision::Failure => Complex::Panic(Panic::NonExhaustiveMatch),
+
+        Decision::Match { target, case, fallback } => {
+            assert_eq!(target.path(), &[]);
+
+            let body = multi_pattern(&case.body, actions, value.clone());
+            let fallback = multi_pattern(fallback, actions, value.clone());
+
+            let match_value = match &case.constructor {
+                Constructor::Bool(bool) => Atomic::Bool(*bool),
+                Constructor::Number(number) => Atomic::Int(*number),
+            };
+
+            let condition = Atomic::Equality(Box::new(value.clone()), Box::new(match_value));
+
+            Complex::If(Box::new(IfElse {
+                condition,
+                if_true: body,
+                if_false: fallback
+            }))
+        }
+    }
 }
 
 fn single_pattern(node: &Decision, action: Complex, value: Atomic) -> Complex {
@@ -139,10 +181,10 @@ fn single_pattern(node: &Decision, action: Complex, value: Atomic) -> Complex {
             // TODO: This only applies since there are no constructors taking arguments currently.
             assert_eq!(target.path(), &[]);
 
-            match fallback {
-                Some(deref!(Decision::Failure)) | None => {}
+            match fallback.as_ref() {
+                Decision::Failure => {}
                 // It should be impossible for the fallback in a let-expression to be anything but a failure.
-                Some(_) => unreachable!()
+                _ => unreachable!()
             }
 
             let bindings = match &case.body {
@@ -165,18 +207,7 @@ fn single_pattern(node: &Decision, action: Complex, value: Atomic) -> Complex {
         }
     };
 
-    let bind = bindings.iter().fold(action, |acc, binding| {
-        // TODO: This only applies since there are no constructors taking arguments currently.
-        assert_eq!(binding.value.path(), &[]);
-
-        Complex::Let(Box::new(Let {
-            symbol: binding.variable,
-            // This currently doesn't make a whole lot of sense since "each" binding will get the same value,
-            // but currently there can only be a single binding per pattern, so this does makes sense.
-            value: value.clone(),
-            expr: acc
-        }))
-    });
+    let bind = fold_bindings(action, value, bindings);
 
     match condition {
         Some(condition) => Complex::If(Box::new(IfElse {
@@ -198,14 +229,26 @@ fn m(expr: &ast::Expr<Typed>) -> Atomic {
         ast::Expr::Bind(_) => unimplemented!(),
         ast::Expr::Lambda(lambda) => {
             let cont = CONTINUATION_PROVIDER.next();
+            let param = GEN_PROVIDER.next();
 
             let actions = lambda.cases.actions.iter()
-                .map(|expr| t(expr, ConversionContinuation::Continuable(Atomic::Cont(cont))))
+                .map(|expr| t(
+                    expr,
+                    ConversionContinuation::Continuable(Atomic::Cont(cont))
+                ))
                 .collect::<Vec<_>>();
 
-            let lambda = multi_pattern(&lambda.cases.root, &actions);
+            let body = multi_pattern(
+                &lambda.cases.root,
+                &actions,
+                Atomic::Var(CpsSymbol::Gen(param))
+            );
 
-            Atomic::Lambda(Box::new(lambda))
+            Atomic::Lambda(Box::new(Lambda {
+                param: CpsSymbol::Gen(param),
+                cont: Some(cont),
+                body
+            }))
         }
         ast::Expr::Apply(_) => unimplemented!(),
         ast::Expr::If(_) => unimplemented!()

@@ -110,7 +110,7 @@ pub enum Decision {
         // TODO: This should maybe be a vector of cases.
         case: Box<Case>,
         /// The decision node to fall back on if no case matches.
-        fallback: Option<Box<Decision>>,
+        fallback: Box<Decision>,
     },
 }
 
@@ -207,7 +207,7 @@ fn compile_clauses(clauses: Vec<Clause>) -> Decision {
             constructor: branch_pattern.constructor,
             body: a
         }),
-        fallback: Some(Box::new(b))
+        fallback: Box::new(b)
     }
 }
 
