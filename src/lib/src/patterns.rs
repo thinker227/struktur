@@ -102,12 +102,13 @@ pub enum Decision {
     Success(Body),
     /// Terminal failure of the entire pattern.
     Failure,
-    /// Match a target against a set of cases.
+    /// Match a target against a case.
     Match {
         /// The target to match.
         target: Target,
-        /// The cases to match against.
-        cases: Vec<Case>,
+        /// The case to match against.
+        // TODO: This should maybe be a vector of cases.
+        case: Box<Case>,
         /// The decision node to fall back on if no case matches.
         fallback: Option<Box<Decision>>,
     },
@@ -202,11 +203,10 @@ fn compile_clauses(clauses: Vec<Clause>) -> Decision {
 
     Decision::Match {
         target: branch_target,
-        cases: vec![Case {
+        case: Box::new(Case {
             constructor: branch_pattern.constructor,
-            // arguments:
             body: a
-        }],
+        }),
         fallback: Some(Box::new(b))
     }
 }
