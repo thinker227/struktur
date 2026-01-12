@@ -10,7 +10,7 @@
 - [x] Parsing string expressions
 - [x] Symbol resolution and type checking errors
 - [ ] Main function
-- [ ] Pattern matching
+- [x] Pattern matching
 - [ ] Type annotations
 - [ ] Algebraic data types
 - [ ] Modules
