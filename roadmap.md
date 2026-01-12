@@ -11,6 +11,7 @@
 - [x] Symbol resolution and type checking errors
 - [ ] Main function
 - [ ] Pattern matching
+- [ ] Type annotations
 - [ ] Algebraic data types
 - [ ] Modules
 - [ ] REPL
