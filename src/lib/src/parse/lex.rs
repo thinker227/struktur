@@ -271,6 +271,11 @@ impl<'src> Lexer<'src> {
             return LexResult::Ok(());
         }
 
+        if let Some(len) = self.comment() {
+            self.consume_bytes(len.bytes)?;
+            return LexResult::Ok(());
+        }
+
         if let Some((name, len)) = self.name()? {
             let kind = keyword(name).unwrap_or(TokenKind::Name);
             self.push_token(PartialToken { chars: len.chars, kind })?;
@@ -295,6 +300,16 @@ impl<'src> Lexer<'src> {
         LexResult::Err(ParseError::UnknownCharacter {
             char_span: TextSpan::new(self.offset, current.len_utf8())
         })
+    }
+
+    fn comment(&self) -> Option<StrLen> {
+        if self.peek(2) != Some("//") {
+            return None;
+        }
+
+        let len = self.leading(|c| c != '\n');
+
+        Some(len)
     }
 
     fn name(&self) -> LexResult<Option<(&str, StrLen)>> {

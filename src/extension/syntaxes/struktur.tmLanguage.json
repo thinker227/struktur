@@ -4,6 +4,9 @@
     "scopeName": "source.struktur",
     "patterns": [
         {
+            "include": "#comments"
+        },
+        {
             "include": "#keywords"
         },
         {
@@ -29,6 +32,10 @@
         }
     ],
     "repository": {
+        "comments": {
+            "name": "comment.line.struktur",
+            "match": "\\/\\/.*"
+        },
         "keywords": {
             "patterns": [
                 {
