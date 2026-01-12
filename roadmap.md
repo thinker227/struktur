@@ -9,6 +9,7 @@
 - [x] Compiler CLI
 - [x] Parsing string expressions
 - [x] Symbol resolution and type checking errors
+- [ ] Comments
 - [ ] Main function
 - [x] Pattern matching
 - [ ] Type annotations
