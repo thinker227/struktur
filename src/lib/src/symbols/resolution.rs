@@ -256,7 +256,7 @@ impl<'ast> Resolver<'ast> {
 
     fn pattern(&mut self, pattern: &Pattern<Parse>) -> SymResult<Pattern<Sem>> {
         let sem_pattern = match pattern {
-            Pattern::Wildcard(wildcard) => Pattern::Wildcard(wildcard.clone()),
+            Pattern::Wildcard(wildcard) => Pattern::Wildcard(*wildcard),
 
             Pattern::Var(var) => {
                 let var_data = VariableSymbol {
@@ -273,11 +273,11 @@ impl<'ast> Resolver<'ast> {
                 })
             }
 
-            Pattern::Unit(unit) => Pattern::Unit(unit.clone()),
+            Pattern::Unit(unit) => Pattern::Unit(*unit),
 
-            Pattern::Number(number) => Pattern::Number(number.clone()),
+            Pattern::Number(number) => Pattern::Number(*number),
 
-            Pattern::Bool(bool) => Pattern::Bool(bool.clone()),
+            Pattern::Bool(bool) => Pattern::Bool(*bool),
         };
 
         Ok(sem_pattern)
