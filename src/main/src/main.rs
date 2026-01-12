@@ -67,7 +67,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
 
     let text = fs::read_to_string(&args.input)?;
     let source = NamedSource::new(
-        args.input.to_string_lossy().into_owned(),
+        args.input.to_string_lossy(),
         text
     );
 
