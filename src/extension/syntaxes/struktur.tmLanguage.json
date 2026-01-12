@@ -69,7 +69,7 @@
             ]
         },
         "function-bindings": {
-            "match": "(let)\\s+(\\p{L}+)\\s*(=)\\s*(fun)(?:\\s+(true|false)|(\\p{L}+))?",
+            "match": "(let)\\s+(\\p{L}+)\\s*(=)\\s*(fun)(?:\\s+(?:(true|false)|(\\p{L}+)))?",
             "captures": {
                 "1": {
                     "name": "keyword.other.struktur"
