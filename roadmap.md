@@ -16,7 +16,7 @@
 - [ ] Operators
 - [ ] Modules
 - [ ] REPL
-- [ ] VSCode extension/TextMate grammar
+- [x] VSCode extension/TextMate grammar
 - [ ] Rank-2 types
 - [ ] Higher-kinded types
 - [ ] Typeclasses

@@ -1,0 +1,157 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "struktur",
+    "scopeName": "source.struktur",
+    "patterns": [
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#function-bindings"
+        },
+        {
+            "include": "#parameters"
+        },
+        {
+            "include": "#local-variables"
+        },
+        {
+            "include": "#compound-keywords"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#names"
+        },
+        {
+            "include": "#strings"
+        }
+    ],
+    "repository": {
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "constant.language.boolean.struktur",
+                    "match": "\\b(true|false)\\b"
+                },
+                {
+                    "name": "keyword.other.struktur",
+                    "match": "\\b(in)\\b"
+                },
+                {
+                    "name": "keyword.other.struktur",
+                    "match": "->"
+                },
+                {
+                    "name": "constant.other.struktur",
+                    "match": "_"
+                },
+                {
+                    "name": "constant.language.null.struktur",
+                    "match": "\\(\\s*\\)"
+                },
+                {
+                    "name": "meta.punctuation.struktur",
+                    "match": "=|\\(|\\)"
+                },
+                {
+                    "name": "keyword.control.struktur",
+                    "match": "\\b(if|then|else)\\b"
+                }
+            ]
+        },
+        "function-bindings": {
+            "match": "(let)\\s+(\\p{L}+)\\s*(=)\\s*(fun)(?:\\s+(true|false)|(\\p{L}+))?",
+            "captures": {
+                "1": {
+                    "name": "keyword.other.struktur"
+                },
+                "2": {
+                    "name": "entity.name.function.struktur"
+                },
+                "3": {
+                    "name": "meta.punctuation.struktur"
+                },
+                "4": {
+                    "name": "keyword.other.struktur"
+                },
+                "5": {
+                    "name": "constant.language.boolean.struktur"
+                },
+                "6": {
+                    "name": "variable.parameter.struktur"
+                }
+            }
+        },
+        "parameters": {
+            "patterns": [
+                {
+                    "match": "(fun)\\s+(?:(true|false)|(\\p{L}+))",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.struktur"
+                        },
+                        "2": {
+                            "name": "constant.language.boolean.struktur"
+                        },
+                        "3": {
+                            "name": "variable.parameter.struktur"
+                        }
+                    }
+                },
+                {
+                    "match": "(\\|)\\s*(?:(true|false)|(\\p{L}+))",
+                    "captures": {
+                        "1": {
+                            "name": "meta.punctuation.struktur"
+                        },
+                        "2": {
+                            "name": "constant.language.boolean.struktur"
+                        },
+                        "3": {
+                            "name": "variable.parameter.struktur"
+                        }
+                    }
+                }
+            ]
+
+        },
+        "local-variables": {
+            "match": "(let)\\s+(\\p{L}+)",
+            "captures": {
+                "1": {
+                    "name": "keyword.other.struktur"
+                },
+                "2": {
+                    "name": "variable.other.struktur"
+                }
+            }
+        },
+        "compound-keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.other.struktur",
+                    "match": "\\b(let|fun)\\b"
+                },
+                {
+                    "name": "meta.punctuation.struktur",
+                    "match": "\\|"
+                }
+            ]
+        },
+        "numbers": {
+            "name": "constant.numeric.struktur",
+            "match": "\\b([0-9]+)"
+        },
+        "names": {
+            "name": "variable.struktur",
+            "match": "\\p{L}+"
+        },
+        "strings": {
+            "name": "string.quoted.double.struktur",
+            "begin": "\"",
+            "end": "\""
+        }
+    }
+}
