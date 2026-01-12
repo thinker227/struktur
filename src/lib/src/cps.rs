@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use crate::{ast, id::{Id, IdProvider}, stage::Typed, symbols::Symbol};
+use crate::{ast, id::{Id, IdProvider}, patterns::{Constructor, Decision}, stage::Typed, symbols::Symbol};
 
 /// A binding.
 #[derive(Debug, Clone)]
@@ -36,6 +36,7 @@ pub struct Lambda {
 pub enum CpsSymbol {
     Symbol(Symbol),
     Gen(GenSymbol),
+    Discard,
 }
 
 /// ID of a continuation parameter.
@@ -56,10 +57,19 @@ pub enum Complex {
     Call(Atomic, Atomic, Option<Atomic>),
     /// Meta-return the value produced by an atomic expression.
     Return(Atomic),
+    /// Panics and aborts execution.
+    Panic(Panic),
     /// Introduces a let-binding with a nested complex expression.
     Let(Box<Let>),
     /// Branches to two complex sub-expressions.
     If(Box<IfElse>),
+}
+
+/// The reason for a panic.
+#[derive(Debug, Clone)]
+pub enum Panic {
+    /// A failure case of a decision tree was reached.
+    NonExhaustiveMatch,
 }
 
 /// A let-binding introduced in a complex expression.
@@ -94,6 +104,7 @@ pub enum Atomic {
     Var(CpsSymbol),
     Cont(Continuation),
     Lambda(Box<Lambda>),
+    Equality(Box<Atomic>, Box<Atomic>),
 }
 
 /// A continuation passed during conversion of a complex expression.
@@ -110,6 +121,73 @@ static CONTINUATION_PROVIDER: IdProvider<Continuation> = IdProvider::new(Continu
 
 static GEN_PROVIDER: IdProvider<GenSymbol> = IdProvider::new(GenSymbol);
 
+fn multi_pattern(node: &Decision, actions: &[Complex]) -> Lambda {
+    todo!()
+}
+
+fn single_pattern(node: &Decision, action: Complex, value: Atomic) -> Complex {
+    let (bindings, condition) = match node {
+        Decision::Success(body) => {
+            assert_eq!(body.action, 0);
+            (&body.bindings, None)
+        }
+
+        // It should be impossible for the single pattern in a let-expression to be an immediate failure.
+        Decision::Failure => unreachable!(),
+
+        Decision::Match { target, case, fallback } => {
+            // TODO: This only applies since there are no constructors taking arguments currently.
+            assert_eq!(target.path(), &[]);
+
+            match fallback {
+                Some(deref!(Decision::Failure)) | None => {}
+                // It should be impossible for the fallback in a let-expression to be anything but a failure.
+                Some(_) => unreachable!()
+            }
+
+            let bindings = match &case.body {
+                Decision::Success(body) => {
+                    assert_eq!(body.action, 0);
+                    &body.bindings
+                }
+                // It should be impossible for the nested pattern in a let-expression to be anything but a success.
+                _ => unreachable!()
+            };
+
+            let match_value = match &case.constructor {
+                Constructor::Bool(bool) => Atomic::Bool(*bool),
+                Constructor::Number(number) => Atomic::Int(*number),
+            };
+
+            let condition = Atomic::Equality(Box::new(value.clone()), Box::new(match_value));
+
+            (bindings, Some(condition))
+        }
+    };
+
+    let bind = bindings.iter().fold(action, |acc, binding| {
+        // TODO: This only applies since there are no constructors taking arguments currently.
+        assert_eq!(binding.value.path(), &[]);
+
+        Complex::Let(Box::new(Let {
+            symbol: binding.variable,
+            // This currently doesn't make a whole lot of sense since "each" binding will get the same value,
+            // but currently there can only be a single binding per pattern, so this does makes sense.
+            value: value.clone(),
+            expr: acc
+        }))
+    });
+
+    match condition {
+        Some(condition) => Complex::If(Box::new(IfElse {
+            condition,
+            if_true: bind,
+            if_false: Complex::Panic(Panic::NonExhaustiveMatch)
+        })),
+        None => bind
+    }
+}
+
 fn m(expr: &ast::Expr<Typed>) -> Atomic {
     match expr {
         ast::Expr::Unit(_) => Atomic::Unit,
@@ -119,13 +197,15 @@ fn m(expr: &ast::Expr<Typed>) -> Atomic {
         ast::Expr::Var(var) => Atomic::Var(CpsSymbol::Symbol(var.symbol)),
         ast::Expr::Bind(_) => unimplemented!(),
         ast::Expr::Lambda(lambda) => {
-            // TODO: Tansform cases.
             let cont = CONTINUATION_PROVIDER.next();
-            Atomic::Lambda(Box::new(Lambda {
-                param: CpsSymbol::Symbol(lambda.param),
-                cont: Some(cont),
-                body: t(&lambda.body, ConversionContinuation::Continuable(Atomic::Cont(cont)))
-            }))
+
+            let actions = lambda.cases.actions.iter()
+                .map(|expr| t(expr, ConversionContinuation::Continuable(Atomic::Cont(cont))))
+                .collect::<Vec<_>>();
+
+            let lambda = multi_pattern(&lambda.cases.root, &actions);
+
+            Atomic::Lambda(Box::new(lambda))
         }
         ast::Expr::Apply(_) => unimplemented!(),
         ast::Expr::If(_) => unimplemented!()
@@ -135,18 +215,17 @@ fn m(expr: &ast::Expr<Typed>) -> Atomic {
 fn t(expr: &ast::Expr<Typed>, cont: ConversionContinuation) -> Complex {
     match expr {
         ast::Expr::Bind(binding) => {
-            // TODO: Tansform pattern.
             let param = CpsSymbol::Gen(GEN_PROVIDER.next());
             t(
                 &binding.value,
                 ConversionContinuation::Continuable(Atomic::Lambda(Box::new(Lambda {
                     param,
                     cont: None,
-                    body: Complex::Let(Box::new(Let {
-                        symbol: binding.symbol,
-                        value: Atomic::Var(param),
-                        expr: t(&binding.expr, cont)
-                    }))
+                    body: single_pattern(
+                        &binding.pattern,
+                        t(&binding.expr, cont),
+                        Atomic::Var(param)
+                    )
                 })))
             )
         }

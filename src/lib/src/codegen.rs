@@ -1,6 +1,6 @@
 use std::{collections::hash_map::HashMap, fmt::{self, Write}};
 
-use crate::{cps::{Atomic, Binding, Complex, Continuation, Cps, CpsSymbol}, symbols::Symbol};
+use crate::{cps::{Atomic, Binding, Complex, Continuation, Cps, CpsSymbol, Panic}, symbols::Symbol};
 
 #[derive(Debug, Clone, Copy)]
 enum ComplexContext {
@@ -31,10 +31,14 @@ impl Codegen {
     }
 
     fn name(&mut self, symbol: CpsSymbol) -> &str {
-        let x = self.names.len();
-        self.names.entry(symbol).or_insert_with(
-            || format!("s{}", x)
-        )
+        if let CpsSymbol::Discard = symbol {
+            "_"
+        } else {
+            let x = self.names.len();
+            self.names.entry(symbol).or_insert_with(
+                || format!("s{}", x)
+            )
+        }
     }
 
     fn cont_name(&mut self, cont: Continuation) -> &str {
@@ -90,6 +94,12 @@ impl Codegen {
                 self.atomic(value)?;
                 write!(self, ";")?;
             }
+            Complex::Panic(panic) => {
+                let msg = match panic {
+                    Panic::NonExhaustiveMatch => "non-exhaustive match",
+                };
+                write!(self, "throw new Error(\"{}\");", msg)?;
+            }
             Complex::Let(binding) => {
                 let name = self.name(CpsSymbol::Symbol(binding.symbol)).to_owned();
                 write!(self, "const {name}=")?;
@@ -143,6 +153,11 @@ impl Codegen {
                 write!(self, ")=>{{")?;
                 self.complex(&lambda.body, ComplexContext::Lambda)?;
                 write!(self, "}}")?;
+            }
+            Atomic::Equality(a, b) => {
+                self.atomic(a)?;
+                write!(self, "===")?;
+                self.atomic(b)?;
             }
         }
 

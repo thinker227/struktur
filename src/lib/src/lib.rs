@@ -1,4 +1,4 @@
-#![feature(never_type, box_into_inner, if_let_guard, try_trait_v2, assert_matches)]
+#![feature(never_type, box_into_inner, if_let_guard, try_trait_v2, assert_matches, deref_patterns)]
 #![allow(clippy::new_without_default)]
 
 pub mod id;
