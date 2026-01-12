@@ -13,8 +13,10 @@
 - [x] Pattern matching
 - [ ] Type annotations
 - [ ] Algebraic data types
+- [ ] Operators
 - [ ] Modules
 - [ ] REPL
+- [ ] VSCode extension/TextMate grammar
 - [ ] Rank-2 types
 - [ ] Higher-kinded types
 - [ ] Typeclasses
