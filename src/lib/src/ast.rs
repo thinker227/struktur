@@ -54,20 +54,31 @@ pub struct NodeData {
     pub id: NodeId,
 }
 
-/// An AST node type.
-pub trait Node: Drive + Any {
-    /// Gets the node data for the node.
+/// A type which contains a [NodeData].
+pub trait ToNodeData {
+    /// Gets the node data for the value.
     fn node_data(&self) -> NodeData;
 
-    /// Gets the ID for the node.
+    /// Gets the ID of the value.
     fn id(&self) -> NodeId {
         self.node_data().id
     }
 
+    /// Gets the span of the value.
     fn span(&self) -> TextSpan {
         self.node_data().span
     }
 }
+
+impl ToNodeData for NodeData {
+    #[inline]
+    fn node_data(&self) -> NodeData {
+        *self
+    }
+}
+
+/// An AST node type.
+pub trait Node: ToNodeData + Drive + Any {}
 
 /// Types might implement [Node].
 pub trait AsNode: Any {
