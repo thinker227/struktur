@@ -99,3 +99,7 @@ impl<N: Node> AsNode for N {
 impl<T: 'static> AsNode for Vec<T> {}
 
 impl<T: 'static> AsNode for Option<T> {}
+
+impl AsNode for () {}
+
+impl AsNode for ! {}

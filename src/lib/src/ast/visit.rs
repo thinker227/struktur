@@ -46,6 +46,14 @@ impl<D: Drive> Drive for Option<D> {
     }
 }
 
+impl Drive for () {
+    fn drive(&self, _: &mut dyn Visitor) {}
+}
+
+impl Drive for ! {
+    fn drive(&self, _: &mut dyn Visitor) {}
+}
+
 // Can be useful to have these unit implementations.
 
 impl Visitor for () {
