@@ -81,21 +81,24 @@ impl<'ast> Resolver<'ast> {
         None
     }
 
-    fn root(&mut self, Root(items, node_data): &Root<Parse>) -> SymResult<Root<Sem>> {
+    fn root(&mut self, root: &Root<Parse>) -> SymResult<Root<Sem>> {
         // Forward refs
         let mut symbols = Vec::new();
-        for item in items {
+        for item in &root.items {
             let symbol = self.register_item(item)?;
             symbols.push(symbol);
         }
 
         let mut sem_items = Vec::new();
-        for (item, symbol) in items.iter().zip(symbols) {
+        for (item, symbol) in root.items.iter().zip(symbols) {
             let sem_item = self.item(item, symbol)?;
             sem_items.push(sem_item);
         }
 
-        Ok(Root(sem_items, *node_data))
+        Ok(Root {
+            data: root.data,
+            items: sem_items
+        })
     }
 
     fn register_item(&mut self, item: &Item<Parse>) -> SymResult<Symbol> {

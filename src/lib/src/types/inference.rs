@@ -593,7 +593,7 @@ impl VisitT<VarExpr<Sem>> for Referencer<'_> {
 fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
     let mut graph = DiGraph::new();
 
-    let items = &ast.root().0;
+    let items = &ast.root().items;
 
     let mut bindings = HashMap::new();
     for item in items {
@@ -670,12 +670,15 @@ impl Embedder {
         }
     }
 
-    fn root(&self, Root(items, node_data): &Root<Sem>) -> Root<Typed> {
-        let typed_items = items.iter()
+    fn root(&self, root: &Root<Sem>) -> Root<Typed> {
+        let typed_items = root.items.iter()
             .map(|item| self.item(item))
             .collect();
 
-        Root(typed_items, *node_data)
+        Root {
+            data: root.data,
+            items: typed_items
+        }
     }
 
     fn item(&self, item: &Item<Sem>) -> Item<Typed> {

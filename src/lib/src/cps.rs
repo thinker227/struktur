@@ -337,7 +337,7 @@ pub struct Cps {
 /// Transforms an AST into CPS representation.
 pub fn transform_cps(ast: &ast::Ast<Typed>) -> Cps {
     let mut bindings = HashMap::new();
-    for item in &ast.root().0 {
+    for item in &ast.root().items {
         let ast::Item::Binding(binding) = item;
 
         let symbol = binding.symbol;

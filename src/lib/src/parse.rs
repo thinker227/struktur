@@ -182,7 +182,11 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             None => eoi.span
         };
 
-        Ok(Root(items, self.node_data(span)))
+        // Ok(Root(items, self.node_data(span)))
+        Ok(Root {
+            data: self.node_data(span),
+            items
+        })
     }
 
     fn parse_item(&mut self) -> ParseResult<Item<Parse>> {

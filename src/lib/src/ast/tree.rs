@@ -8,12 +8,9 @@ use crate::{ast::{Node, NodeData, visit::{Drive, Visitor}}, stage::Stage};
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub struct Root<S: Stage>(pub Vec<Item<S>>, pub NodeData);
-
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
-pub enum Item<S: Stage> {
-    Binding(Binding<S>),
+pub struct Root<S: Stage> {
+    pub data: NodeData,
+    pub items: Vec<Item<S>>,
 }
 
 #[derive(Derivative)]
@@ -214,7 +211,7 @@ impl<S: Stage> Expr<S> {
 
 impl<S: Stage + 'static> Drive for Root<S> {
     fn drive(&self, visitor: &mut dyn Visitor) {
-        visitor.visit(&self.0);
+        visitor.visit(&self.items);
     }
 }
 
@@ -338,7 +335,7 @@ impl Drive for BoolPattern {
 
 impl<S: Stage + 'static> Node for Root<S> {
     fn node_data(&self) -> NodeData {
-        self.1
+        self.data
     }
 }
 

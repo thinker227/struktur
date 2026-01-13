@@ -80,7 +80,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
     };
 
     if args.types {
-        for item in &ast.root().0 {
+        for item in &ast.root().items {
             match item {
                 ast::Item::Binding(binding) => {
                     let symbol = match ast.symbols().get(binding.symbol) {
