@@ -1,3 +1,12 @@
+//! Definitions of AST nodes.
+//!
+//! This module uses macros from the companion crate `struktur_macros`
+//! to help *significantly* shorten the code required for each node.
+//! [`struct_node`] is expanded into a struct with a set of fields and trait implementations
+//! for [Node], [ToNodeData], [Drive], [Clone] and [Debug](std::fmt::Debug).
+//! [`enum_node`] is expanded into an enum with a set of variants and the same trait implementations
+//! as structs, as well as a struct for each variant.
+
 use derivative::Derivative;
 use struktur_macros::{struct_node, enum_node};
 
