@@ -77,6 +77,12 @@ impl ToNodeData for NodeData {
     }
 }
 
+impl ToNodeData for ! {
+    fn node_data(&self) -> NodeData {
+        unreachable!()
+    }
+}
+
 /// An AST node type.
 pub trait Node: ToNodeData + Drive + Any {}
 
