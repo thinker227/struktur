@@ -251,7 +251,8 @@ fn m(expr: &ast::Expr<Typed>) -> Atomic {
             }))
         }
         ast::Expr::Apply(_) => unimplemented!(),
-        ast::Expr::If(_) => unimplemented!()
+        ast::Expr::If(_) => unimplemented!(),
+        ast::Expr::TyAnn(_) => unreachable!(),
     }
 }
 

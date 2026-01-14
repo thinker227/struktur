@@ -253,6 +253,9 @@ fn generate_clause(pattern: &ast::Pattern<Sem>, index: usize) -> Clause {
             )),
             None
         ),
+
+        // Don't need to care about the type here, just pass through.
+        ast::Pattern::TyAnn(ann) => return generate_clause(&ann.pat, index),
     };
 
     Clause {
