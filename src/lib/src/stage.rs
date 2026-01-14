@@ -81,8 +81,8 @@ impl Stage for Sem {
     type Pattern = ast::Pattern<Sem>;
     type Cases = Vec<Case<Sem>>;
     type TyAnn = ast::TyExpr<Sem>;
-    type TyAnnExpr = ast::TyAnnExpr<Parse>;
-    type TyAnnPattern = ast::TyAnnPattern<Parse>;
+    type TyAnnExpr = ast::TyAnnExpr<Sem>;
+    type TyAnnPattern = ast::TyAnnPattern<Sem>;
     type Syms = Symbols<Sem>;
     type ExprData = ();
     type VarData = ();
