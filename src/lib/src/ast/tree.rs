@@ -25,6 +25,7 @@ enum_node! {
     Item<S> where
     Binding<S> as Binding {
         raw symbol: S::Sym,
+        ty: Option<S::TyAnn>,
         body: Expr<S>
     }
 }
