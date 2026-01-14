@@ -13,14 +13,14 @@ impl Stage {
 
     fn def_site(&self) -> TokenStream {
         match &self.0 {
-            Some(name) => quote! { <#name: Stage> },
+            Some(name) => quote! { <#name: crate::stage::Stage> },
             None => quote! {}
         }
     }
 
     fn def_site_static(&self) -> TokenStream {
         match &self.0 {
-            Some(name) => quote! { <#name: Stage + 'static> },
+            Some(name) => quote! { <#name: crate::stage::Stage + 'static> },
             None => quote! {}
         }
     }
@@ -49,7 +49,7 @@ impl ToTokens for StructNode {
 
         let data_ty = match data_ty {
             Some(ty) => quote! { #ty },
-            None => quote! { NodeData },
+            None => quote! { crate::ast::NodeData },
         };
 
         tokens.extend(quote! {
@@ -58,22 +58,22 @@ impl ToTokens for StructNode {
                 #(#fields),*
             }
 
-            impl #stage_def ToNodeData for #name #stage_use {
-                fn node_data(&self) -> NodeData {
+            impl #stage_def crate::ast::ToNodeData for #name #stage_use {
+                fn node_data(&self) -> crate::ast::NodeData {
                     self.data.node_data()
                 }
             }
 
-            impl #stage_def_static Node for #name #stage_use {}
+            impl #stage_def_static crate::ast::Node for #name #stage_use {}
 
-            impl #stage_def_static Drive for #name #stage_use {
+            impl #stage_def_static crate::ast::visit::Drive for #name #stage_use {
                 #[allow(unused_variables)]
-                fn drive(&self, visitor: &mut dyn Visitor) {
+                fn drive(&self, visitor: &mut dyn crate::ast::visit::Visitor) {
                     #( visitor.visit(&self.#drive_fields); )*
                 }
             }
 
-            impl #stage_def Clone for #name #stage_use {
+            impl #stage_def ::std::clone::Clone for #name #stage_use {
                 #[allow(clippy::clone_on_copy)]
                 fn clone(&self) -> Self {
                     Self {
@@ -83,7 +83,7 @@ impl ToTokens for StructNode {
                 }
             }
 
-            impl #stage_def std::fmt::Debug for #name #stage_use {
+            impl #stage_def ::std::fmt::Debug for #name #stage_use {
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                     f.debug_struct(stringify!(#name_string))
                         .field("data", &self.data)
@@ -138,26 +138,26 @@ impl ToTokens for EnumNode {
                 #(#variants),*
             }
 
-            impl #stage_def ToNodeData for #name #stage_use {
-                fn node_data(&self) -> NodeData {
+            impl #stage_def crate::ast::ToNodeData for #name #stage_use {
+                fn node_data(&self) -> crate::ast::NodeData {
                     match self {
                         #( Self::#variant_names(x) => x.node_data() ),*
                     }
                 }
             }
 
-            impl #stage_def_static Node for #name #stage_use {}
+            impl #stage_def_static crate::ast::Node for #name #stage_use {}
 
-            impl #stage_def_static Drive for #name #stage_use {
+            impl #stage_def_static crate::ast::visit::Drive for #name #stage_use {
                 #[allow(unused_variables)]
-                fn drive(&self, visitor: &mut dyn Visitor) {
+                fn drive(&self, visitor: &mut dyn crate::ast::visit::Visitor) {
                     match self {
                         #( #variant_visit_arms ),*
                     }
                 }
             }
 
-            impl #stage_def Clone for #name #stage_use {
+            impl #stage_def ::std::clone::Clone for #name #stage_use {
                 #[allow(clippy::clone_on_copy)]
                 fn clone(&self) -> Self {
                     match self {
@@ -166,7 +166,7 @@ impl ToTokens for EnumNode {
                 }
             }
 
-            impl #stage_def std::fmt::Debug for #name #stage_use {
+            impl #stage_def ::std::fmt::Debug for #name #stage_use {
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                     match self {
                         #(

@@ -10,7 +10,7 @@
 use derivative::Derivative;
 use struktur_macros::{struct_node, enum_node};
 
-use crate::{ast::{Node, NodeData, ToNodeData, visit::{Drive, Visitor}}, stage::Stage};
+use crate::{ast::{NodeData, ToNodeData}, stage::Stage};
 
 /*-------*\
 |  Nodes  |
