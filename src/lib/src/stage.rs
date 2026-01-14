@@ -17,7 +17,7 @@
 
 use std::fmt::Debug;
 
-use crate::{ast::{self, Case, Expr, visit::Drive}, patterns, symbols::{Symbol, Symbols}, types::{TypedBindingData, TypedExprData, TypedVariableData}};
+use crate::{ast::{self, Case, Expr, ToNodeData, visit::Drive}, patterns, symbols::{Symbol, Symbols}, types::{TypedBindingData, TypedExprData, TypedVariableData}};
 
 /// The compilation stage of an AST.
 pub trait Stage {
@@ -30,11 +30,17 @@ pub trait Stage {
     /// Representation of a list of cases.
     type Cases: Debug + Clone + Drive;
 
-    /// Representation of type annotations.
+    /// Representation of type annotations as part of normal nodes
+    /// which presence is not affected by the stage.
     type TyAnn: Debug + Clone + Drive;
 
-    /// Representation of type annotations which primarily make up the variant of an enum node.
-    type TyAnnBranch: Debug + Clone + Drive;
+    /// Representation of type annotation expressions,
+    /// which may disappear depending on the stage.
+    type TyAnnExpr: Debug + Clone + Drive + ToNodeData;
+
+    /// Representation of type annotation patterns,
+    /// which may disappear depending on the stage.
+    type TyAnnPattern: Debug + Clone + Drive + ToNodeData;
 
     /// Global collection of symbols.
     type Syms: Debug;
@@ -59,7 +65,8 @@ impl Stage for Parse {
     type Pattern = ast::Pattern<Parse>;
     type Cases = Vec<Case<Parse>>;
     type TyAnn = ast::TyExpr<Parse>;
-    type TyAnnBranch = ast::TyExpr<Parse>;
+    type TyAnnExpr = ast::TyAnnExpr<Parse>;
+    type TyAnnPattern = ast::TyAnnPattern<Parse>;
     type Syms = ();
     type ExprData = ();
     type VarData = !;
@@ -74,7 +81,8 @@ impl Stage for Sem {
     type Pattern = ast::Pattern<Sem>;
     type Cases = Vec<Case<Sem>>;
     type TyAnn = ast::TyExpr<Sem>;
-    type TyAnnBranch = ast::TyExpr<Sem>;
+    type TyAnnExpr = ast::TyAnnExpr<Parse>;
+    type TyAnnPattern = ast::TyAnnPattern<Parse>;
     type Syms = Symbols<Sem>;
     type ExprData = ();
     type VarData = ();
@@ -89,7 +97,8 @@ impl Stage for Typed {
     type Pattern = patterns::Decision;
     type Cases = patterns::Cases<Expr<Typed>>;
     type TyAnn = ();
-    type TyAnnBranch = !;
+    type TyAnnExpr = !;
+    type TyAnnPattern = !;
     type Syms = Symbols<Typed>;
     type ExprData = TypedExprData;
     type VarData = TypedVariableData;

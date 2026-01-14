@@ -84,10 +84,13 @@ enum_node! {
         if_true: Expr<S>,
         if_false: Expr<S>
     },
-    box TyAnnExpr<S> as TyAnn {
-        expr: Expr<S>,
-        ty: S::TyAnnBranch
-    }
+    box TyAnn(S::TyAnnExpr)
+}
+
+struct_node! {
+    TyAnnExpr<S> where
+    expr: Expr<S>,
+    ty: TyExpr<S>
 }
 
 struct_node! {
@@ -109,10 +112,13 @@ enum_node! {
     BoolPattern as Bool {
         raw val: bool
     },
-    box TyAnnPattern<S> as TyAnn {
-        pat: Pattern<S>,
-        ty: S::TyAnnBranch
-    }
+    box TyAnn(S::TyAnnPattern)
+}
+
+struct_node! {
+    TyAnnPattern<S> where
+    pat: Pattern<S>,
+    ty: TyExpr<S>
 }
 
 enum_node! {
