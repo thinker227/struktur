@@ -18,8 +18,9 @@ enum_node! {
     Item<S> where
     Binding<S> as Binding {
         symbol: S::Sym,
+        ty: Option<S::TyAnn>,
         body: Expr<S>
-        => body
+        => ty, body
     }
 }
 
@@ -81,6 +82,11 @@ enum_node! {
         if_true: Expr<S>,
         if_false: Expr<S>
         => condition, if_true, if_false
+    },
+    TyAnnExpr<S> as TyAnn use Box {
+        expr: Expr<S>,
+        ty: S::TyAnnBranch
+        => expr, ty
     }
 }
 
@@ -103,6 +109,31 @@ enum_node! {
     },
     BoolPattern as Bool {
         val: bool
+    },
+    TyAnnPattern<S> as TyAnn use Box {
+        pat: Pattern<S>,
+        ty: S::TyAnnBranch
+        => pat, ty
+    }
+}
+
+enum_node! {
+    TyExpr<S> where
+    IntTyExpr as Int {},
+    BoolTyExpr as Bool {},
+    StringTyExpr as String {},
+    VarTyExpr<S> as Var {
+        symbol: S::Sym
+    },
+    FunctionTyExpr<S> as Function use Box {
+        param: TyExpr<S>,
+        ret: TyExpr<S>
+        => param, ret
+    },
+    ForallTyExpr<S> as Forall use Box {
+        vars: Vec<S::Sym>,
+        ty: TyExpr<S>
+        => ty
     }
 }
 

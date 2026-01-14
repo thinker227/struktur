@@ -30,6 +30,12 @@ pub trait Stage {
     /// Representation of a list of cases.
     type Cases: Debug + Clone + Drive;
 
+    /// Representation of type annotations.
+    type TyAnn: Debug + Clone + Drive;
+
+    /// Representation of type annotations which primarily make up the variant of an enum node.
+    type TyAnnBranch: Debug + Clone + Drive;
+
     /// Global collection of symbols.
     type Syms: Debug;
 
@@ -52,6 +58,8 @@ impl Stage for Parse {
     type Sym = String;
     type Pattern = ast::Pattern<Parse>;
     type Cases = Vec<Case<Parse>>;
+    type TyAnn = ast::TyExpr<Parse>;
+    type TyAnnBranch = ast::TyExpr<Parse>;
     type Syms = ();
     type ExprData = ();
     type VarData = !;
@@ -65,6 +73,8 @@ impl Stage for Sem {
     type Sym = Symbol;
     type Pattern = ast::Pattern<Sem>;
     type Cases = Vec<Case<Sem>>;
+    type TyAnn = ast::TyExpr<Sem>;
+    type TyAnnBranch = ast::TyExpr<Sem>;
     type Syms = Symbols<Sem>;
     type ExprData = ();
     type VarData = ();
@@ -78,6 +88,8 @@ impl Stage for Typed {
     type Sym = Symbol;
     type Pattern = patterns::Decision;
     type Cases = patterns::Cases<Expr<Typed>>;
+    type TyAnn = ();
+    type TyAnnBranch = !;
     type Syms = Symbols<Typed>;
     type ExprData = TypedExprData;
     type VarData = TypedVariableData;
