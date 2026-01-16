@@ -37,6 +37,22 @@ pub enum ParseError {
         span: TextSpan,
         found: TokenKind,
         expected: String,
+    },
+
+    #[error("Type annotation {kind}s have to be enclosed in parentheses")]
+    TyAnnNotAllowed {
+        #[label("Assuming you intended to annotate this {kind}")]
+        target_span: TextSpan,
+        #[label("Enclose this in parentheses")]
+        full_span: TextSpan,
+        kind: String,
+    },
+
+    #[error("Unknown type `{name}`")]
+    UnknownType {
+        #[label]
+        span: TextSpan,
+        name: String,
     }
 }
 
@@ -73,9 +89,20 @@ enum CurrentToken<'src> {
 enum ExprContext {
     /// The expression is parsed as normal.
     Normal,
+    /// The expression is enclosed in parentheses.
+    Enclosed,
     /// The expression is forbidden from being a keyword-led expression.
     /// Only used as the context for the argument expression in function applications.
     Trailing,
+}
+
+/// The context in which an atom pattern is parsed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PatternContext {
+    /// The pattern is parsed as normal.
+    Normal,
+    /// The pattern is enclosed in parentheses.
+    Enclosed,
 }
 
 #[derive(Debug, Clone)]
@@ -218,20 +245,49 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     fn parse_binding(&mut self) -> ParseResult<Binding<Parse>> {
         let r#let = self.expect(TokenKind::Let)?;
         let name = self.expect(TokenKind::Name)?;
+
+        let ty = self.try_parse_type_ann()?;
+
         self.expect(TokenKind::Equals)?;
-        let body = self.parse_expr()?;
+        let body = self.parse_expr(ExprContext::Normal)?;
 
         let span = TextSpan::between(r#let.span, body.span());
 
         Ok(Binding {
             data: self.node_data(span),
             symbol: name.text.to_owned(),
+            ty,
             body
         })
     }
 
-    fn parse_expr(&mut self) -> ParseResult<Expr<Parse>> {
-        self.parse_application_expr()
+    fn parse_expr(&mut self, ctx: ExprContext) -> ParseResult<Expr<Parse>> {
+        self.parse_tyann_expr(ctx)
+    }
+
+    fn parse_tyann_expr(&mut self, ctx: ExprContext) -> ParseResult<Expr<Parse>> {
+        let expr = self.parse_application_expr()?;
+
+        if let Some(ty) = self.try_parse_type_ann()? {
+            let span = TextSpan::between(expr.span(), ty.span());
+
+            if let ExprContext::Enclosed = ctx {
+
+                Ok(Expr::TyAnn(Box::new(TyAnnExpr {
+                    data: self.node_data(span),
+                    expr,
+                    ty
+                })))
+            } else {
+                Err(ParseError::TyAnnNotAllowed {
+                    target_span: expr.span(),
+                    full_span: span,
+                    kind: "expression".to_owned()
+                })
+            }
+        } else {
+            Ok(expr)
+        }
     }
 
     fn parse_application_expr(&mut self) -> ParseResult<Expr<Parse>> {
@@ -269,7 +325,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                         data: self.expr_data(span)
                     })
                 } else {
-                    let expr = self.parse_expr()?;
+                    let expr = self.parse_expr(ExprContext::Enclosed)?;
                     self.expect(TokenKind::CloseParen)?;
                     return Ok(Some(expr));
                 }
@@ -335,11 +391,11 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
 
     fn parse_let_expr(&mut self) -> ParseResult<Let<Parse>> {
         let r#let = self.expect(TokenKind::Let)?;
-        let pattern = self.parse_pattern()?;
+        let pattern = self.parse_pattern(PatternContext::Normal)?;
         self.expect(TokenKind::Equals)?;
-        let value = self.parse_expr()?;
+        let value = self.parse_expr(ExprContext::Normal)?;
         self.expect(TokenKind::In)?;
-        let expr = self.parse_expr()?;
+        let expr = self.parse_expr(ExprContext::Normal)?;
 
         let span = TextSpan::between(r#let.span, expr.span());
 
@@ -353,11 +409,11 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
 
     fn parse_if_else_expr(&mut self) -> ParseResult<IfElse<Parse>> {
         let r#if = self.expect(TokenKind::If)?;
-        let condition = self.parse_expr()?;
+        let condition = self.parse_expr(ExprContext::Normal)?;
         self.expect(TokenKind::Then)?;
-        let if_true = self.parse_expr()?;
+        let if_true = self.parse_expr(ExprContext::Normal)?;
         self.expect(TokenKind::Else)?;
-        let if_false = self.parse_expr()?;
+        let if_false = self.parse_expr(ExprContext::Normal)?;
 
         let span = TextSpan::between(r#if.span, if_false.span());
 
@@ -390,9 +446,9 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     }
 
     fn parse_case(&mut self) -> ParseResult<Case<Parse>> {
-        let pattern = self.parse_pattern()?;
+        let pattern = self.parse_pattern(PatternContext::Normal)?;
         self.expect(TokenKind::DashGreaterThan)?;
-        let body = self.parse_expr()?;
+        let body = self.parse_expr(ExprContext::Normal)?;
 
         let span = TextSpan::between(pattern.span(), body.span());
 
@@ -403,7 +459,36 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         })
     }
 
-    fn parse_pattern(&mut self) -> ParseResult<Pattern<Parse>> {
+    fn parse_pattern(&mut self, ctx: PatternContext) -> ParseResult<Pattern<Parse>> {
+        self.parse_tyann_pattern(ctx)
+    }
+
+    fn parse_tyann_pattern(&mut self, ctx: PatternContext) -> ParseResult<Pattern<Parse>> {
+        let pattern = self.parse_atom_pattern()?;
+
+        if let Some(ty) = self.try_parse_type_ann()? {
+            let span = TextSpan::between(pattern.span(), ty.span());
+
+            if let PatternContext::Enclosed = ctx {
+
+                Ok(Pattern::TyAnn(Box::new(TyAnnPattern {
+                    data: self.node_data(span),
+                    pat: pattern,
+                    ty
+                })))
+            } else {
+                Err(ParseError::TyAnnNotAllowed {
+                    target_span: pattern.span(),
+                    full_span: span,
+                    kind: "pattern".to_owned()
+                })
+            }
+        } else {
+            Ok(pattern)
+        }
+    }
+
+    fn parse_atom_pattern(&mut self) -> ParseResult<Pattern<Parse>> {
         let pattern = match self.current().kind {
             TokenKind::Underscore => {
                 let underscore = self.advance();
@@ -429,9 +514,9 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                         data: self.node_data(span)
                     })
                 } else {
-                    let pattern = self.parse_pattern()?;
+                    let pattern = self.parse_pattern(PatternContext::Enclosed)?;
                     self.expect(TokenKind::CloseParen)?;
-                    return Ok(pattern);
+                    pattern
                 }
             }
 
@@ -464,6 +549,131 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         };
 
         Ok(pattern)
+    }
+
+    fn try_parse_type_ann(&mut self) -> ParseResult<Option<TyExpr<Parse>>> {
+        if self.advance_if(TokenKind::Colon).is_some() {
+            let ty = self.parse_tyexpr()?;
+            Ok(Some(ty))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn parse_tyexpr(&mut self) -> ParseResult<TyExpr<Parse>> {
+        self.parse_function_tyexpr()
+    }
+
+    fn parse_function_tyexpr(&mut self) -> ParseResult<TyExpr<Parse>> {
+        let ty = self.parse_atom_tyexpr()?;
+
+        if self.advance_if(TokenKind::DashGreaterThan).is_some() {
+            let ret = self.parse_tyexpr()?;
+
+            let span = TextSpan::between(ty.span(), ret.span());
+
+            Ok(TyExpr::Function(Box::new(FunctionTyExpr {
+                data: self.node_data(span),
+                param: ty,
+                ret
+            })))
+        } else {
+            Ok(ty)
+        }
+    }
+
+    fn parse_atom_tyexpr(&mut self) -> ParseResult<TyExpr<Parse>> {
+        self.try_parse_atom_tyexpr()?.ok_or_else(|| {
+            let current = self.current();
+            ParseError::unexpected_token(current.span, current.kind, "type")
+        })
+    }
+
+    fn try_parse_atom_tyexpr(&mut self) -> Result<Option<TyExpr<Parse>>, ParseError> {
+        let expr = match self.current().kind {
+            TokenKind::OpenParen => {
+                let open_paren = self.advance();
+
+                if self.current().kind == TokenKind::CloseParen {
+                    let close_paren = self.advance();
+                    let span = TextSpan::between(open_paren.span, close_paren.span);
+                    TyExpr::Unit(UnitTyExpr {
+                        data: self.node_data(span)
+                    })
+                } else {
+                    let ty = self.parse_tyexpr()?;
+                    self.expect(TokenKind::CloseParen)?;
+                    return Ok(Some(ty));
+                }
+            }
+
+            TokenKind::Name => {
+                let name = self.advance();
+
+                let span = name.span;
+
+                match name.text {
+                    "Int" => TyExpr::Int(IntTyExpr {
+                        data: self.node_data(span)
+                    }),
+                    "Bool" => TyExpr::Bool(BoolTyExpr {
+                        data: self.node_data(span)
+                    }),
+                    "String" => TyExpr::String(StringTyExpr {
+                        data: self.node_data(span)
+                    }),
+
+                    _ => return Err(ParseError::UnknownType {
+                        span,
+                        name: name.text.to_owned()
+                    })
+                }
+            }
+
+            TokenKind::TypeVarName => {
+                let var = self.advance();
+
+                let name = &var.text[1..];
+
+                TyExpr::Var(VarTyExpr {
+                    data: self.node_data(var.span),
+                    symbol: name.to_owned()
+                })
+            }
+
+            TokenKind::Forall => {
+                let forall = self.advance();
+
+                let mut vars = Vec::new();
+                while let Some(var) = self.advance_if(TokenKind::TypeVarName) {
+                    let name = &var.text[1..];
+                    vars.push(name.to_owned());
+                }
+
+                if self.advance_if(TokenKind::Dot).is_none() {
+                    let current = self.current();
+                    return Err(ParseError::UnexpectedToken {
+                        span: current.span,
+                        found: current.kind,
+                        expected: "type variable name or `.`".to_owned()
+                    });
+                }
+
+                let inner = self.parse_tyexpr()?;
+
+                let span = TextSpan::between(forall.span, inner.span());
+
+                TyExpr::Forall(Box::new(ForallTyExpr {
+                    data: self.node_data(span),
+                    vars,
+                    ty: inner
+                }))
+            }
+
+            _ => return Ok(None)
+        };
+
+        Ok(Some(expr))
     }
 }
 
