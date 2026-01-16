@@ -36,6 +36,8 @@ pub enum SymbolKind<S: Stage> {
     Var(VariableSymbol<S>),
     /// A binding.
     Binding(BindingSymbol<S>),
+    /// A type variable.
+    TypeVar(TypeVarSymbol),
 }
 
 /// A variable symbol.
@@ -82,12 +84,23 @@ impl<S: Stage> BindingSymbol<S> {
     }
 }
 
+/// A type variable symbol.
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
+pub struct TypeVarSymbol {
+    /// The name of the type variable.
+    pub name: String,
+    /// The ID of the declaraing node of the type variable.
+    pub decl: NodeId,
+}
+
 impl<S: Stage> SymbolKind<S> {
     /// Gets the name of the symbol.
     pub fn name(&self) -> &String {
         match self {
             SymbolKind::Var(variable) => &variable.name,
             SymbolKind::Binding(binding) => &binding.name,
+            SymbolKind::TypeVar(type_var) => &type_var.name,
         }
     }
 
@@ -95,6 +108,7 @@ impl<S: Stage> SymbolKind<S> {
         match self {
             SymbolKind::Var(variable) => variable.decl,
             SymbolKind::Binding(binding) => binding.decl,
+            SymbolKind::TypeVar(type_var) => type_var.decl,
         }
     }
 }
