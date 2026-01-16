@@ -124,6 +124,7 @@ struct_node! {
 
 enum_node! {
     TyExpr<S> where
+    UnitTyExpr as Unit {},
     IntTyExpr as Int {},
     BoolTyExpr as Bool {},
     StringTyExpr as String {},
