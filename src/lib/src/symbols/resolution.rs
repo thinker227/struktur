@@ -167,15 +167,21 @@ impl<'ast> Resolver<'ast> {
     }
 
     fn binding(&mut self, binding: &Binding<Parse>, function_symbol: Symbol) -> SymResult<Binding<Sem>> {
-        let sem_body = self.in_scope(|this| {
-            // This technically doesn't need a scope,
-            // but it's nice just to ensure that symbols don't accidentally leak out.
-            this.expr(&binding.body)
+        let (sem_body, sem_ty) = self.in_scope(|this| {
+            let sem_body = this.expr(&binding.body)?;
+
+            let sem_ty = match &binding.ty {
+                Some(ty) => Some(this.tyexpr(ty)?),
+                None => None
+            };
+
+            Ok((sem_body, sem_ty))
         })?;
 
         Ok(Binding {
             data: binding.data,
             body: sem_body,
+            ty: sem_ty,
             symbol: function_symbol
         })
     }
@@ -269,6 +275,17 @@ impl<'ast> Resolver<'ast> {
                     if_false: sem_if_false
                 })
             }
+
+            Expr::TyAnn(ann) => {
+                let sem_expr = self.expr(&ann.expr)?;
+                let sem_ty = self.tyexpr(&ann.ty)?;
+
+                Expr::TyAnn(Box::new(TyAnnExpr {
+                    data: ann.data,
+                    expr: sem_expr,
+                    ty: sem_ty
+                }))
+            }
         };
 
         Ok(sem_expr)
@@ -312,8 +329,23 @@ impl<'ast> Resolver<'ast> {
             Pattern::Number(number) => Pattern::Number(number.clone()),
 
             Pattern::Bool(bool) => Pattern::Bool(bool.clone()),
+
+            Pattern::TyAnn(ann) => {
+                let sem_pat = self.pattern(&ann.pat)?;
+                let sem_ty = self.tyexpr(&ann.ty)?;
+
+                Pattern::TyAnn(Box::new(TyAnnPattern {
+                    data: ann.data,
+                    pat: sem_pat,
+                    ty: sem_ty
+                }))
+            }
         };
 
         Ok(sem_pattern)
+    }
+
+    fn tyexpr(&mut self, tyexpr: &TyExpr<Parse>) -> SymResult<TyExpr<Sem>> {
+        todo!()
     }
 }
