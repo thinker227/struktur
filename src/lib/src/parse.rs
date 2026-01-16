@@ -25,6 +25,12 @@ pub enum ParseError {
         string_span: TextSpan,
     },
 
+    #[error("Expected name after `'`")]
+    MalformedTypeVarName {
+        #[label]
+        tick_span: TextSpan,
+    },
+
     #[error("Found {found} token, expected {expected}")]
     UnexpectedToken {
         #[label]
