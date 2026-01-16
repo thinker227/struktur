@@ -8,7 +8,7 @@ mod lex;
 
 use std::{fmt::Display, rc::Rc};
 
-use crate::{ast::*, id::IdProvider, maybe_result::MaybeResult, stage::Parse, text_span::TextSpan};
+use crate::{ast::*, id::IdProvider, stage::Parse, text_span::TextSpan};
 use self::lex::{Token, TokenKind, lex};
 
 #[derive(Debug, Clone, thiserror::Error, miette::Diagnostic)]
@@ -190,23 +190,23 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     }
 
     fn parse_item(&mut self) -> ParseResult<Item<Parse>> {
-        self.try_parse_item().unwrap_or_err(|| {
+        self.try_parse_item()?.ok_or_else(|| {
             let current = self.current();
             ParseError::unexpected_token(current.span, current.kind, "item")
         })
     }
 
-    fn try_parse_item(&mut self) -> MaybeResult<Item<Parse>, ParseError> {
+    fn try_parse_item(&mut self) -> Result<Option<Item<Parse>>, ParseError> {
         let item = match self.current().kind {
             TokenKind::Let => {
                 let binding = self.parse_binding()?;
                 Item::Binding(binding)
             }
 
-            _ => return MaybeResult::None
+            _ => return Ok(None)
         };
 
-        MaybeResult::Ok(item)
+        Ok(Some(item))
     }
 
     fn parse_binding(&mut self) -> ParseResult<Binding<Parse>> {
@@ -231,9 +231,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     fn parse_application_expr(&mut self) -> ParseResult<Expr<Parse>> {
         let mut result = self.parse_atom_expr(ExprContext::Normal)?;
 
-        while let Some(expr) = self.try_parse_atom_expr(ExprContext::Trailing).into_option() {
-            let expr = expr?;
-
+        while let Some(expr) = self.try_parse_atom_expr(ExprContext::Trailing)? {
             let span = TextSpan::between(result.span(), expr.span());
 
             result = Expr::Apply(Box::new(Application {
@@ -247,13 +245,13 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     }
 
     fn parse_atom_expr(&mut self, ctx: ExprContext) -> ParseResult<Expr<Parse>> {
-        self.try_parse_atom_expr(ctx).unwrap_or_err(|| {
+        self.try_parse_atom_expr(ctx)?.ok_or_else(|| {
             let current = self.current();
             ParseError::unexpected_token(current.span, current.kind, "expression")
         })
     }
 
-    fn try_parse_atom_expr(&mut self, ctx: ExprContext) -> MaybeResult<Expr<Parse>, ParseError> {
+    fn try_parse_atom_expr(&mut self, ctx: ExprContext) -> Result<Option<Expr<Parse>>, ParseError> {
         let expr = match self.current().kind {
             TokenKind::OpenParen => {
                 let open_paren = self.advance();
@@ -267,7 +265,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                 } else {
                     let expr = self.parse_expr()?;
                     self.expect(TokenKind::CloseParen)?;
-                    return MaybeResult::Ok(expr);
+                    return Ok(Some(expr));
                 }
             }
 
@@ -323,10 +321,10 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                 Expr::If(Box::new(if_else))
             }
 
-            _ => return MaybeResult::None
+            _ => return Ok(None)
         };
 
-        MaybeResult::Ok(expr)
+        Ok(Some(expr))
     }
 
     fn parse_let_expr(&mut self) -> ParseResult<Let<Parse>> {
