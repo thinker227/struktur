@@ -15,8 +15,8 @@ expr = '(' ')'                 (* Unit *)
      | expr expr               (* Application
                                   Does not permit trailing let bindings, lambdas,
                                   or if expressions without parens. *)
-     | expr typeAnn            (* Type annotation *)
      | '(' expr ')'            (* Syntactic grouping *)
+     | '(' expr typeAnn ')'    (* Type annotation *)
      ;
 
 let = 'let' pattern '=' expr 'in' expr ;
@@ -27,13 +27,13 @@ lambda = 'fun' '|'? case ('|' case)* ;
 
 case = pattern '->' expr ;
 
-pattern = '_'                  (* Wildcard *)
-        | NAME                 (* Wildcard variable *)
-        | '(' ')'              (* Unit *)
-        | NUMBER               (* Int *)
-        | 'true' | 'false'     (* Bool *)
-        | pattern typeAnn      (* Type annotation *)
-        | '(' pattern ')'      (* Syntactic grouping *)
+pattern = '_'                     (* Wildcard *)
+        | NAME                    (* Wildcard variable *)
+        | '(' ')'                 (* Unit *)
+        | NUMBER                  (* Int *)
+        | 'true' | 'false'        (* Bool *)
+        | '(' pattern ')'         (* Syntactic grouping *)
+        | '(' pattern typeAnn ')' (* Type annotation *)
         ;
 
 typeAnn = ':' type ;
