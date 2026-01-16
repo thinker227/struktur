@@ -14,27 +14,41 @@ pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum SymbolResError {
-    #[error("A symbol with the name `{name}` has already been declared in this scope")]
+    #[error("A {kind} with the name `{name}` has already been declared in this scope")]
     DuplicateDeclaration {
         #[label]
         span: TextSpan,
         name: String,
         #[label("Previously declared here")]
         previous_declaration: TextSpan,
+        kind: String,
     },
 
-    #[error("No symbol with the name `{name}` is available in this scope")]
+    #[error("No {kind} with the name `{name}` is available in this scope")]
     Undeclared {
         #[label]
         span: TextSpan,
         name: String,
+        kind: String,
     },
 }
 
 type SymResult<T> = Result<T, SymbolResError>;
 
+#[derive(Debug, Clone)]
+struct Named {
+    value: Option<Symbol>,
+    type_var: Option<Symbol>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NameKind {
+    Value,
+    TypeVar,
+}
+
 struct Resolver<'ast> {
-    scopes: Vec<HashMap<String, Symbol>>,
+    scopes: Vec<HashMap<String, Named>>,
     symbols: Symbols<Sem>,
     ast: &'ast Ast<Parse>,
 }
@@ -61,20 +75,35 @@ impl<'ast> Resolver<'ast> {
         let scope = scopes.last_mut()
             .expect("there should always be a scope");
 
-        match scope.entry(name) {
-            Entry::Occupied(entry) => Err(*entry.get()),
-            Entry::Vacant(entry) => {
+        let named = scope.entry(name)
+            .or_insert_with(|| Named {
+                value: None,
+                type_var: None
+            });
+
+        let spot = match data {
+            SymbolKind::Var(_) => &mut named.value,
+            SymbolKind::Binding(_) => &mut named.value,
+            SymbolKind::TypeVar(_) => &mut named.type_var,
+        };
+
+        match spot {
+            Some(x) => Err(*x),
+            None => {
                 let symbol = symbols.register(data);
-                entry.insert(symbol);
+                *spot = Some(symbol);
                 Ok(symbol)
             }
         }
     }
 
-    fn look_up(&self, name: &str) -> Option<Symbol> {
+    fn look_up(&self, name: &str, kind: NameKind) -> Option<Symbol> {
         for scope in self.scopes.iter().rev() {
-            if let Some(sym) = scope.get(name) {
-                return Some(*sym);
+            if let Some(named) = scope.get(name) {
+                return match kind {
+                    NameKind::Value => named.value,
+                    NameKind::TypeVar => named.type_var,
+                };
             }
         }
 
@@ -120,7 +149,8 @@ impl<'ast> Resolver<'ast> {
                 SymbolResError::DuplicateDeclaration {
                     span: item.span(),
                     name,
-                    previous_declaration: prev_span
+                    previous_declaration: prev_span,
+                    kind: "binding".to_owned()
                 }
             })
     }
@@ -172,10 +202,11 @@ impl<'ast> Resolver<'ast> {
             }),
 
             Expr::Var(var) => {
-                let var_symbol = self.look_up(&var.symbol)
+                let var_symbol = self.look_up(&var.symbol, NameKind::Value)
                     .ok_or_else(|| SymbolResError::Undeclared {
                         span: TextSpan::empty(0),
-                        name: var.symbol.clone()
+                        name: var.symbol.clone(),
+                        kind: "variable or binding".to_owned()
                     })?;
 
                 Expr::Var(VarExpr {
