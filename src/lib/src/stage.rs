@@ -64,7 +64,7 @@ impl Stage for Parse {
     type Sym = String;
     type Pattern = ast::Pattern<Parse>;
     type Cases = Vec<Case<Parse>>;
-    type TyAnn = ast::TyExpr<Parse>;
+    type TyAnn = Option<ast::TyExpr<Parse>>;
     type TyAnnExpr = ast::TyAnnExpr<Parse>;
     type TyAnnPattern = ast::TyAnnPattern<Parse>;
     type Syms = ();
@@ -80,7 +80,7 @@ impl Stage for Sem {
     type Sym = Symbol;
     type Pattern = ast::Pattern<Sem>;
     type Cases = Vec<Case<Sem>>;
-    type TyAnn = ast::TyExpr<Sem>;
+    type TyAnn = Option<ast::TyExpr<Sem>>;
     type TyAnnExpr = ast::TyAnnExpr<Sem>;
     type TyAnnPattern = ast::TyAnnPattern<Sem>;
     type Syms = Symbols<Sem>;
