@@ -140,6 +140,15 @@ impl<Ty> PolyType<Ty> {
             PolyType::Type(ty) => PolyType::Type(f(ty)),
         }
     }
+
+    /// Gets a reference to the inner type of the polytype,
+    /// either the plain type of the type generalized over in a forall.
+    pub fn inner(&self) -> &Ty {
+        match self {
+            PolyType::Forall(forall) => &forall.target,
+            PolyType::Type(ty) => ty
+        }
+    }
 }
 
 impl<R: Repr> From<Primitive> for MonoType<R> {
