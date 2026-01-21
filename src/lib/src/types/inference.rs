@@ -852,47 +852,6 @@ fn match_inferred_pattern(ctx: &Context, pat: &Pattern<Sem>, expr: &Expr<Sem>) -
     Ok(ty)
 }
 
-// TODO: Maybe come up with a more descriptive name for what this function actually does.
-/// Handles inferring the type of the value in a let-binding, generalizing it,
-/// unifying it with the binding's pattern, and making sure that the variables bound by the binding
-/// are registered in the context.
-fn let_binding(ctx: &Context, binding: &Let<Sem>) -> InferResult<()> {
-    // Infer the type of the value assigned to the binding using a forall level one higher than before.
-    // This ensures that unsolved meta variables within the binding properly become type variables
-    // in a forall generalization.
-    let val_ty = infer(&ctx.extend(), &binding.value)?;
-
-    // Try to generalize the type. Since let-bindings cannot have forward-declarations,
-    // it is guaranteed that all meta variables within the binding are in their final solved/unsolved
-    // state after the binding's type has been inferred.
-    match generalize(ctx, val_ty) {
-        Ok(forall) => match &binding.pattern {
-            // Wildcard patterns just discard the value.
-            Pattern::Wildcard(_) => {}
-
-            // In case the pattern is a variable, give it the generalized type.
-            Pattern::Var(pattern_var) => {
-                ctx.add_symbol_ty(pattern_var.symbol, PolyType::Forall(forall)).unwrap();
-            }
-
-            // For any other patterns, instantiate the type we just generalized and unify it with the pattern type.
-            _ => {
-                let val_ty = forall.instantiate(ctx);
-                let pattern_ty = infer_pattern(ctx, &binding.pattern)?;
-                unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.span())?;
-            }
-        }
-
-        // In case we did not generalize the type, just unify it with the pattern type.
-        Err(val_ty) => {
-            let pattern_ty = infer_pattern(ctx, &binding.pattern)?;
-            unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.span())?;
-        }
-    };
-
-    Ok(())
-}
-
 /// Infers the suggested type of a pattern.
 fn infer_pattern(ctx: &Context, pat: &Pattern<Sem>) -> InferResult<InferType> {
     let ty = match pat {
