@@ -151,6 +151,16 @@ impl<Ty> PolyType<Ty> {
     }
 }
 
+impl<Ty> Forall<Ty> {
+    /// Maps the type within the forall.
+    pub fn map<Other>(self, f: impl FnOnce(Ty) -> Other) -> Forall<Other> {
+        Forall {
+            target: f(self.target),
+            vars: self.vars
+        }
+    }
+}
+
 impl<R: Repr> From<Primitive> for MonoType<R> {
     fn from(value: Primitive) -> Self {
         Self::Primitive(value)
