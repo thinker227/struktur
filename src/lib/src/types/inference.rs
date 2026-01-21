@@ -2,7 +2,7 @@
 
 //! Type checking and inference.
 //!
-//! The algorithm used for type inference is [Algorithm-J](https://en.wikipedia.org/wiki/Hindley-Milner_type_system#Algorithm_J),
+//! The algorithm used for type inference is [Algorithm-J](https://en.wikipedia.org/wiki/Hindley-Milner_type_system#Algorithm_J) with bidirectionality tacked on,
 //! with the implementation heavily referencing [brendanzab's Language Garden project](https://github.com/brendanzab/language-garden/blob/main/scraps/check_poly_algorithm_j.ml)
 //! and [an example by jfetcher](https://github.com/jfecher/algorithm-j).
 //! Most notably, Algorithm-J uses mutable unification variables instead of a substitution map,
@@ -10,7 +10,7 @@
 
 mod var;
 
-use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}};
+use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}, sync::Arc};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
@@ -33,11 +33,32 @@ pub enum TypeCheckError {
         b: String,
     },
 
+    #[error("Expected type `{expected}` but found type `{actual}`")]
+    UnexpectedType {
+        #[label]
+        span: TextSpan,
+        expected: String,
+        actual: String
+    },
+
     #[error("Cannot construct infinite type from constraint `{var}` = `{ty}`")]
     OccursCheck {
         #[label]
         span: TextSpan,
         var: String,
+        ty: String,
+    },
+
+    #[error("Higher-rank type is not allowed as the annotated type of an expression")]
+    ExplicitForallProhibited {
+        #[label]
+        span: TextSpan,
+    },
+
+    #[error("This pattern has type `{ty}`, which is not allowed for a lambda parameter")]
+    GeneralizedParameter {
+        #[label]
+        span: TextSpan,
         ty: String,
     },
 }
@@ -104,6 +125,30 @@ impl From<TypeVar> for InferType {
     }
 }
 
+impl From<MonoType<Pruned>> for MonoType<Vars> {
+    fn from(value: MonoType<Pruned>) -> Self {
+        match value {
+            MonoType::Primitive(primitive) => MonoType::Primitive(primitive),
+            MonoType::Function(func) => {
+                let func = Arc::unwrap_or_clone(func).into();
+                MonoType::Function(Arc::new(func))
+            }
+            MonoType::Var(var) => MonoType::Var(var),
+        }
+    }
+}
+
+impl From<FunctionType<Pruned>> for FunctionType<Vars> {
+    fn from(value: FunctionType<Pruned>) -> Self {
+        let param = value.param.into();
+        let ret = value.ret.into();
+        FunctionType {
+            param: InferType::Type(param),
+            ret: InferType::Type(ret)
+        }
+    }
+}
+
 /*-------------------*\
 |  Inference context  |
 \*-------------------*/
@@ -113,6 +158,7 @@ struct RawContext {
     // Only bindings can be forall generalizations, expressions themselves cannot.
     expr_types: RefCell<HashMap<NodeId, InferType>>,
     symbol_types: RefCell<HashMap<Symbol, PolyType<InferType>>>,
+    type_parameters: RefCell<HashMap<Symbol, TypeVar>>,
     id_provider: IdProvider,
 }
 
@@ -121,6 +167,7 @@ impl RawContext {
         Self {
             expr_types: RefCell::new(HashMap::new()),
             symbol_types: RefCell::new(HashMap::new()),
+            type_parameters: RefCell::new(HashMap::new()),
             id_provider: IdProvider::new_plain()
         }
     }
@@ -202,6 +249,19 @@ impl<'raw> Context<'raw> {
     pub fn lookup_symbol(&self, key: Symbol) -> Option<PolyType<InferType>> {
         self.raw.symbol_types.borrow().get(&key).cloned()
     }
+
+    /// Gets or adds a type variable linked to a symbol.
+    pub fn get_or_add_type_var(&self, type_var: Symbol) -> TypeVar {
+        let mut borrow = self.raw.type_parameters.borrow_mut();
+        match borrow.entry(type_var) {
+            Entry::Occupied(entry) => *entry.get(),
+            Entry::Vacant(entry) => {
+                let var = TypeVar(self.raw.id_provider.next());
+                entry.insert(var);
+                var
+            }
+        }
+    }
 }
 
 /*---------------------------------*\
@@ -256,6 +316,60 @@ impl Forall<InferType> {
 /*------------*\
 |  Algorithms  |
 \*------------*/
+
+fn generate_type(ctx: &Context, tyexpr: &TyExpr<Sem>) -> InferResult<PolyType<MonoType<Pruned>>> {
+    let ty: PolyType<MonoType<Pruned>> = match tyexpr {
+        TyExpr::Unit(_) => PolyType::Type(MonoType::Primitive(Primitive::Unit)),
+        TyExpr::Int(_) => PolyType::Type(MonoType::Primitive(Primitive::Int)),
+        TyExpr::Bool(_) => PolyType::Type(MonoType::Primitive(Primitive::Bool)),
+        TyExpr::String(_) => PolyType::Type(MonoType::Primitive(Primitive::String)),
+
+        TyExpr::Var(var) => {
+            let ty_var = ctx.get_or_add_type_var(var.symbol);
+            PolyType::Type(MonoType::Var(ty_var))
+        }
+
+        TyExpr::Function(function) => {
+            let param = generate_type(ctx, &function.param)?
+                .prohibit_forall(function.param.span())?;
+            let ret = generate_type(ctx, &function.ret)?
+                .prohibit_forall(function.ret.span())?;
+
+            PolyType::Type(MonoType::Function(Arc::new(FunctionType {
+                param,
+                ret
+            })))
+        }
+
+        TyExpr::Forall(forall) => {
+            let vars = forall.vars.iter()
+                .map(|var| ctx.get_or_add_type_var(*var))
+                .collect();
+
+            let target = generate_type(ctx, &forall.ty)?
+                .prohibit_forall(forall.ty.span())?;
+
+            PolyType::Forall(Forall {
+                vars,
+                target
+            })
+        }
+    };
+
+    Ok(ty)
+}
+
+impl<Ty> PolyType<Ty> {
+    /// Prohibits a polytype from being a [Forall] generalization, returning an error in case it is.
+    fn prohibit_forall(self, span: TextSpan) -> InferResult<Ty> {
+        match self {
+            PolyType::Forall(_) => Err(TypeCheckError::ExplicitForallProhibited {
+                span
+            }),
+            PolyType::Type(ty) => Ok(ty),
+        }
+    }
+}
 
 /// Checks whether a unification variable occurs within another type.
 fn occurs(var: &MetaVar, within: &InferType) -> bool {
@@ -422,40 +536,11 @@ fn infer(ctx: &Context, expr: &Expr<Sem>) -> InferResult<InferType> {
         }
 
         Expr::Bind(binding) => {
-            // Infer the type of the value assigned to the binding using a forall level one higher than before.
-            // This ensures that unsolved meta variables within the binding properly become type variables
-            // in a forall generalization.
-            let val_ty = infer(&ctx.extend(), &binding.value)?;
+            // Type-check the pattern and value and register its bound variables into the context.
+            match_inferred_pattern(ctx, &binding.pattern, &binding.value)?;
 
-            // Try to generalize the type. Since let-bindings cannot have forward-declarations,
-            // it is guaranteed that all meta variables within the binding are in their final solved/unsolved
-            // state after the binding's type has been inferred.
-            match generalize(ctx, val_ty) {
-                Ok(forall) => match &binding.pattern {
-                    // Wildcard patterns just discard the value.
-                    Pattern::Wildcard(_) => {}
-
-                    // In case the pattern is a variable, give it the generalized type.
-                    Pattern::Var(pattern_var) => {
-                        ctx.add_symbol_ty(pattern_var.symbol, PolyType::Forall(forall)).unwrap();
-                    }
-
-                    // For any other patterns, instantiate the type we just generalized and unify it with the pattern type.
-                    _ => {
-                        let val_ty = forall.instantiate(ctx);
-                        let pattern_ty = pattern(ctx, &binding.pattern)?;
-                        unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.span())?;
-                    }
-                }
-
-                // In case we did not generalize the type, just unify it with the pattern type.
-                Err(val_ty) => {
-                    let pattern_ty = pattern(ctx, &binding.pattern)?;
-                    unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.span())?;
-                }
-            };
-
-            // Now that we have the type of the binding in the context, we can infer the return expression.
+            // Now that we have the types of the variables bound by the binding in the context,
+            // we can infer the return expression.
             infer(ctx, &binding.expr)?
         }
 
@@ -466,7 +551,7 @@ fn infer(ctx: &Context, expr: &Expr<Sem>) -> InferResult<InferType> {
             let param_ty = InferType::Var(ctx.fresh_meta());
             let ret_ty = InferType::Var(ctx.fresh_meta());
             for case in &lambda.cases {
-                let pattern_ty = pattern(ctx, &case.pattern)?;
+                let pattern_ty = infer_pattern(ctx, &case.pattern)?;
                 unify(&pattern_ty, &param_ty, ctx.forall_level, case.pattern.span())?;
 
                 let body_ty = infer(ctx, &case.body)?;
@@ -497,16 +582,14 @@ fn infer(ctx: &Context, expr: &Expr<Sem>) -> InferResult<InferType> {
         }
 
         Expr::If(if_else) => {
-            let condition_ty = infer(ctx, &if_else.condition)?;
+            check(
+                ctx,
+                &if_else.condition,
+                &MonoType::Primitive(Primitive::Bool)
+            )?;
+
             let if_true_ty = infer(ctx, &if_else.if_true)?;
             let if_false_ty = infer(ctx, &if_else.if_false)?;
-
-            unify(
-                &condition_ty,
-                &InferType::Type(MonoType::Primitive(Primitive::Bool)),
-                ctx.forall_level,
-                if_else.condition.span()
-            )?;
 
             unify(
                 &if_true_ty,
@@ -520,6 +603,16 @@ fn infer(ctx: &Context, expr: &Expr<Sem>) -> InferResult<InferType> {
 
             if_true_ty.clone()
         }
+
+        Expr::TyAnn(ann) => {
+            // Expressions cannot be annotated with forall types.
+            let ty = generate_type(ctx, &ann.ty)?
+                .prohibit_forall(ann.ty.span())?;
+
+            check(ctx, &ann.expr, &ty)?;
+
+            InferType::Type(ty.into())
+        }
     };
 
     ctx.add_expr_ty(expr.id(), ty.clone()).unwrap();
@@ -527,9 +620,230 @@ fn infer(ctx: &Context, expr: &Expr<Sem>) -> InferResult<InferType> {
     Ok(ty)
 }
 
+/// Checks that a given expression has an expected type.
+fn check(ctx: &Context, expr: &Expr<Sem>, expected: &MonoType<Pruned>) -> InferResult<()> {
+    match (expr, expected) {
+          (Expr::Unit(_), MonoType::Primitive(Primitive::Unit))
+        | (Expr::Int(_), MonoType::Primitive(Primitive::Int))
+        | (Expr::Bool(_), MonoType::Primitive(Primitive::Bool))
+        | (Expr::String(_), MonoType::Primitive(Primitive::String))
+        => {}
+
+        (Expr::Var(var_expr), _) => {
+            let ty = match ctx.lookup_symbol(var_expr.symbol) {
+                Some(PolyType::Forall(forall)) => forall.instantiate(ctx),
+                Some(PolyType::Type(ty)) => ty,
+                None => panic!("no type for variable {:?}", var_expr.symbol)
+            };
+
+            unify(
+                &ty,
+                &InferType::Type(expected.clone().into()),
+                ctx.forall_level,
+                var_expr.span()
+            )?;
+        }
+
+        (Expr::Bind(binding), _) => {
+            // Try to infer a polymorphic type from the structure of the pattern.
+            // Additionally, this sets the type of all the variables bound by the pattern.
+            match_inferred_pattern(ctx, &binding.pattern, &binding.value)?;
+
+            // Now that we have the types of the variables bound by the binding in the context,
+            // we can check the return expression.
+            check(ctx, &binding.expr, expected)?;
+        }
+
+        (Expr::Lambda(lambda), MonoType::Function(func)) => {
+            for case in &lambda.cases {
+                check_pattern(ctx, &case.pattern, &func.param)?;
+                check(ctx, &case.body, &func.ret)?;
+            }
+        }
+
+        // If we have a lambda with an expected type that is not a function,
+        // then just fall back on the default case which will attempt to unify the two
+        // and subsequently fail.
+
+        (Expr::Apply(app), _) => {
+            let target_ty = infer(ctx, &app.target)?;
+            let arg_ty = infer(ctx, &app.arg)?;
+            let ret_ty = InferType::Var(ctx.fresh_meta());
+
+            // The target of an application should always be a function,
+            // so unify the target with a function from the argument type to the return type.
+            unify(
+                &target_ty,
+                &InferType::Type(MonoType::function(
+                    arg_ty,
+                    ret_ty.clone()
+                )),
+                ctx.forall_level,
+                app.target.span()
+            )?;
+
+            unify(
+                &ret_ty,
+                &InferType::Type(expected.clone().into()),
+                ctx.forall_level,
+                app.span()
+            )?;
+        }
+
+        (Expr::If(if_else), _) => {
+            check(
+                ctx,
+                &if_else.condition,
+                &MonoType::Primitive(Primitive::Bool)
+            )?;
+
+            check(ctx, &if_else.if_true, expected)?;
+            check(ctx, &if_else.if_false, expected)?;
+        }
+
+        (Expr::TyAnn(ann), _) => {
+            // If a type annotation expression is encountered here, then the annotated
+            // type has to be the same as the currently expected type.
+            // It also cannot be a forall since expressions cannot have forall types.
+            let ann_ty = generate_type(ctx, &ann.ty)?
+                .prohibit_forall(ann.ty.span())?;
+
+            if &ann_ty != expected {
+                let mut print_ctx = PrintCtx::new();
+                let expected = pretty_print_with(expected, &mut print_ctx);
+                let actual = pretty_print_with(&ann_ty, &mut print_ctx);
+
+                return Err(TypeCheckError::UnexpectedType {
+                    span: expr.span(),
+                    expected,
+                    actual
+                });
+            }
+
+            check(ctx, &ann.expr, expected)?;
+        }
+
+        _ => {
+            // Fall back on unification.
+            let ty = infer(ctx, expr)?;
+            unify(
+                &ty,
+                &InferType::Type(expected.clone().into()),
+                ctx.forall_level,
+                expr.span()
+            )?;
+
+            ctx.add_expr_ty(expr.id(), ty).unwrap();
+        }
+    }
+
+    ctx.add_expr_ty(expr.id(), InferType::Type(expected.clone().into())).unwrap();
+
+    Ok(())
+}
+
+/// Checks that a given expression has an expected forall type.
+// There's no way that an expression is expected to have a forall type without an explicit type annotation,
+// in which case there also cannot be any meta variables inside the type.
+fn check_forall(ctx: &Context, expr: &Expr<Sem>, expected: &Forall<MonoType<Pruned>>) -> InferResult<()> {
+    check(ctx, expr, &expected.target)
+}
+
+/// Type-checks the inferred structure of a pattern against an expression.
+fn match_inferred_pattern(ctx: &Context, pat: &Pattern<Sem>, expr: &Expr<Sem>) -> InferResult<PolyType<InferType>> {
+    let ty = match infer_pattern_structure(ctx, pat)? {
+        // The pattern's type is able to be generalized.
+        InferredPatternStructure::Generalizable(meta_var, var) => {
+            // Infer the type of the value and try to generalize it.
+            let val_ty = infer(&ctx.extend(), expr)?;
+            let (var_ty, inner) = match generalize(ctx, val_ty) {
+                Ok(forall) => {
+                    let inner = forall.target.clone();
+                    (PolyType::Forall(forall), inner)
+                }
+                Err(ty) => (PolyType::Type(ty.clone()), ty)
+            };
+
+            meta_var.sub(inner).expect("meta variable returned from infer_pattern_poly should not be substituted already");
+
+            if let Some(var) = var {
+                ctx.add_symbol_ty(var, var_ty).unwrap();
+            }
+
+            PolyType::Type(InferType::Var(meta_var))
+        }
+
+        // The pattern was annotated with some type, so we have to check that the type of the value matches that.
+        // Either an explicit forall...
+        InferredPatternStructure::Forall(forall) => {
+            check_forall(ctx, expr, &forall)?;
+
+            PolyType::Forall(forall.map(|ty| InferType::Type(ty.into())))
+        }
+        // ... or just a normal type.
+        InferredPatternStructure::Annotated(ty) => {
+            check(ctx, expr, &ty)?;
+
+            PolyType::Type(InferType::Type(ty.into()))
+        }
+
+        // The pattern's structure said nothing about its type.
+        // Just infer as normal and unify with the type of the value.
+        InferredPatternStructure::Inferred(pat_ty) => {
+            let val_ty = infer(ctx, expr)?;
+            unify(&val_ty, &pat_ty, ctx.forall_level, expr.span())?;
+
+            PolyType::Type(pat_ty)
+        }
+    };
+
+    Ok(ty)
+}
+
+// TODO: Maybe come up with a more descriptive name for what this function actually does.
+/// Handles inferring the type of the value in a let-binding, generalizing it,
+/// unifying it with the binding's pattern, and making sure that the variables bound by the binding
+/// are registered in the context.
+fn let_binding(ctx: &Context, binding: &Let<Sem>) -> InferResult<()> {
+    // Infer the type of the value assigned to the binding using a forall level one higher than before.
+    // This ensures that unsolved meta variables within the binding properly become type variables
+    // in a forall generalization.
+    let val_ty = infer(&ctx.extend(), &binding.value)?;
+
+    // Try to generalize the type. Since let-bindings cannot have forward-declarations,
+    // it is guaranteed that all meta variables within the binding are in their final solved/unsolved
+    // state after the binding's type has been inferred.
+    match generalize(ctx, val_ty) {
+        Ok(forall) => match &binding.pattern {
+            // Wildcard patterns just discard the value.
+            Pattern::Wildcard(_) => {}
+
+            // In case the pattern is a variable, give it the generalized type.
+            Pattern::Var(pattern_var) => {
+                ctx.add_symbol_ty(pattern_var.symbol, PolyType::Forall(forall)).unwrap();
+            }
+
+            // For any other patterns, instantiate the type we just generalized and unify it with the pattern type.
+            _ => {
+                let val_ty = forall.instantiate(ctx);
+                let pattern_ty = infer_pattern(ctx, &binding.pattern)?;
+                unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.span())?;
+            }
+        }
+
+        // In case we did not generalize the type, just unify it with the pattern type.
+        Err(val_ty) => {
+            let pattern_ty = infer_pattern(ctx, &binding.pattern)?;
+            unify(&val_ty, &pattern_ty, ctx.forall_level, binding.pattern.span())?;
+        }
+    };
+
+    Ok(())
+}
+
 /// Infers the suggested type of a pattern.
-fn pattern(ctx: &Context, pattern: &Pattern<Sem>) -> InferResult<InferType> {
-    let ty = match pattern {
+fn infer_pattern(ctx: &Context, pat: &Pattern<Sem>) -> InferResult<InferType> {
+    let ty = match pat {
         // Wildcard patterns don't suggest any type in particular, so just return a fresh type variable.
         Pattern::Wildcard(_) => InferType::Var(ctx.fresh_meta()),
 
@@ -543,9 +857,150 @@ fn pattern(ctx: &Context, pattern: &Pattern<Sem>) -> InferResult<InferType> {
         Pattern::Unit(_) => InferType::Type(MonoType::Primitive(Primitive::Unit)),
         Pattern::Number(_) => InferType::Type(MonoType::Primitive(Primitive::Int)),
         Pattern::Bool(_) => InferType::Type(MonoType::Primitive(Primitive::Bool)),
+
+        Pattern::TyAnn(ann) => {
+            let ty = generate_type(ctx, &ann.ty)?
+                .prohibit_forall(ann.ty.span())?;
+
+            check_pattern(ctx, &ann.pat, &ty)?;
+
+            InferType::Type(ty.into())
+        }
     };
 
     Ok(ty)
+}
+
+/// Info about the inferred structure of a pattern.
+enum InferredPatternStructure {
+    /// The pattern is *able* to be generalized with an optional variable symbol as the target,
+    /// but isn't explicitly annotated as a forall type.
+    Generalizable(MetaVar, Option<Symbol>),
+    /// The pattern is explicitly annotated as a forall type.
+    Forall(Forall<MonoType<Pruned>>),
+    /// The pattern is explicitly annotated as something other than a forall type.
+    Annotated(MonoType<Pruned>),
+    /// The pattern's structure says nothing about its type.
+    Inferred(InferType),
+}
+
+/// Infers the structure of a pattern, including forall types.
+fn infer_pattern_structure(ctx: &Context, pat: &Pattern<Sem>) -> InferResult<InferredPatternStructure> {
+    let inferred = match pat {
+        // Wildcard- and variable patterns can both be generalized.
+        Pattern::Wildcard(_) => InferredPatternStructure::Generalizable(ctx.fresh_meta(), None),
+        Pattern::Var(var) => InferredPatternStructure::Generalizable(ctx.fresh_meta(), Some(var.symbol)),
+
+        Pattern::TyAnn(ann) => {
+            let ty = generate_type(ctx, &ann.ty)?;
+
+            match ty {
+                PolyType::Forall(forall) => {
+                    check_pattern_forall(ctx, &ann.pat, &forall)?;
+                    InferredPatternStructure::Forall(forall)
+                },
+                PolyType::Type(ty) => {
+                    check_pattern(ctx, &ann.pat, &ty)?;
+                    InferredPatternStructure::Annotated(ty)
+                }
+            }
+        }
+
+        _ => {
+            let ty = infer_pattern(ctx, pat)?;
+            InferredPatternStructure::Inferred(ty)
+        }
+    };
+
+    Ok(inferred)
+}
+
+/// Checks that a given pattern matches an expected type.
+fn check_pattern(ctx: &Context, pat: &Pattern<Sem>, expected: &MonoType<Pruned>) -> InferResult<()> {
+    match (pat, expected) {
+        (Pattern::Wildcard(_), _) => {}
+
+        (Pattern::Var(var), _) => {
+            ctx.add_symbol_ty(var.symbol, PolyType::Type(InferType::Type(expected.clone().into()))).unwrap();
+        }
+
+          (Pattern::Unit(_), MonoType::Primitive(Primitive::Unit))
+        | (Pattern::Number(_), MonoType::Primitive(Primitive::Int))
+        | (Pattern::Bool(_), MonoType::Primitive(Primitive::Bool))
+        => {}
+
+        (Pattern::TyAnn(ann), _) => {
+            let ty = generate_type(ctx, &ann.ty)?
+                .prohibit_forall(ann.ty.span())?;
+
+            unify(
+                &InferType::Type(ty.into()),
+                &InferType::Type(expected.clone().into()),
+                ctx.forall_level,
+                ann.ty.span()
+            )?;
+        }
+
+        _ => {
+            // Fall back on unification.
+            let ty = infer_pattern(ctx, pat)?;
+            unify(
+                &ty,
+                &InferType::Type(expected.clone().into()),
+                ctx.forall_level,
+                pat.span()
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Checks that a given pattern matches an expected forall type.
+fn check_pattern_forall(ctx: &Context, pat: &Pattern<Sem>, expected: &Forall<MonoType<Pruned>>) -> InferResult<()> {
+    match pat {
+        // Wildcards and variables can both be foralls just fine.
+        Pattern::Wildcard(_) => {}
+        Pattern::Var(var) => {
+            let forall = expected.clone().map(|ty| InferType::Type(ty.into()));
+            ctx.add_symbol_ty(var.symbol, PolyType::Forall(forall)).unwrap();
+        }
+
+        Pattern::TyAnn(ann) => {
+            let ty = generate_type(ctx, &ann.ty)?;
+
+            // Type annotations only count here if the annotated type is the exact same forall type.
+            // TODO: This needs to be structural, different foralls have technically different type variable symbols but can still be structurally equal.
+            if let PolyType::Forall(ref forall) = ty && forall == expected {}
+            else {
+                let mut print_ctx = PrintCtx::new();
+                let expected = pretty_print_with(expected, &mut print_ctx);
+                let actual = pretty_print_with(&ty, &mut print_ctx);
+
+                return Err(TypeCheckError::UnexpectedType {
+                    span: ann.ty.span(),
+                    expected,
+                    actual,
+                });
+            }
+        }
+
+        _ => {
+            let ty = infer_pattern(ctx, pat)?;
+
+            let mut print_ctx = PrintCtx::new();
+            let expected = pretty_print_with(expected, &mut print_ctx);
+            let actual = pretty_print_with(&ty, &mut print_ctx);
+
+            return Err(TypeCheckError::UnexpectedType {
+                span: pat.span(),
+                expected,
+                actual,
+            });
+        }
+    }
+
+    Ok(())
 }
 
 /// Prunes away all the unification variables from a type.
@@ -608,12 +1063,18 @@ fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
     for item in items {
         match item {
             Item::Binding(binding) => {
-                let mut referencer = Referencer {
-                    current: *bindings.get(&binding.symbol).unwrap(),
-                    bindings: &bindings,
-                    graph: &mut graph
-                };
-                referencer.visit(binding);
+                // If a binding has a type annotation then we can let it
+                // sit on its own in the reference graph since it already has
+                // its type prescribed and does not need to
+                // participate in global inference with other bindings.
+                if binding.ty.is_none() {
+                    let mut referencer = Referencer {
+                        current: *bindings.get(&binding.symbol).unwrap(),
+                        bindings: &bindings,
+                        graph: &mut graph
+                    };
+                    referencer.visit(binding);
+                }
             }
         }
     }
@@ -666,7 +1127,8 @@ impl Embedder {
                 TypedBindingData {
                     ty: self.get_symbol_type(symbol)
                 }
-            ))
+            )),
+            SymbolKind::TypeVar(_) => todo!()
         }
     }
 
@@ -688,6 +1150,7 @@ impl Embedder {
                 Item::Binding(Binding {
                     data: function.data,
                     body: typed_body,
+                    ty: (),
                     symbol: function.symbol
                 })
             }
@@ -756,7 +1219,9 @@ impl Embedder {
                 condition: self.expr(&if_else.condition),
                 if_true: self.expr(&if_else.if_true),
                 if_false: self.expr(&if_else.if_false)
-            })
+            }),
+
+            Expr::TyAnn(ann) => self.expr(&ann.expr),
         }
     }
 }
@@ -784,6 +1249,32 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
     let mut binding_vars = HashMap::new();
 
     for group in groups {
+        if let [item] = group.as_slice() {
+            let decl = ast.symbols().get(*item).decl();
+            let binding = ast.get_node_as::<Binding<Sem>>(decl).unwrap();
+
+            // If there is only a single item in the group and that item has a type annotation,
+            // then we can infer it separately from everything else by checking directly against
+            // the annotated type.
+            if let Some(ref ann) = binding.ty {
+                let ann = generate_type(&ctx, ann)?;
+
+                let ctx = ctx.extend();
+
+                match &ann {
+                    PolyType::Forall(forall) => check_forall(&ctx, &binding.body, forall)?,
+                    PolyType::Type(ty) => check(&ctx, &binding.body, ty)?
+                }
+
+                ctx.add_symbol_ty(*item, ann.map(|ty| InferType::Type(ty.into()))).unwrap();
+
+                continue;
+            }
+        }
+
+        // There's either multiple bindings in the group, or the single binding in the group
+        // does not have a type annotation. In this case we infer all the bindings together.
+
         // Create types for each binding and their parameters
         // so that every binding in the group has a corresponding type when inferring their bodies.
         for item in &group {
@@ -799,7 +1290,7 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
         // Infer the bodies of each binding.
         for item in &group {
             let decl = ast.symbols().get(*item).decl();
-            let binding = &ast.get_node_as::<Binding<Sem>>(decl).unwrap();
+            let binding = ast.get_node_as::<Binding<Sem>>(decl).unwrap();
 
             let ctx = ctx.extend();
 
