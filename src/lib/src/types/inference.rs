@@ -14,7 +14,7 @@ use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}, sync::Arc};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::{visit::{VisitT, Visitor}, *}, id::IdProvider, patterns::{Cases, compile_pattern}, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}, visit};
+use crate::{ast::{visit::{VisitT, Visitor}, *}, id::IdProvider, patterns::{Cases, compile_pattern}, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind, Symbols}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}, visit};
 
 pub use self::var::MetaVar;
 
@@ -154,7 +154,8 @@ impl From<FunctionType<Pruned>> for FunctionType<Vars> {
 \*-------------------*/
 
 #[derive(Debug)]
-struct RawContext {
+struct RawContext<'syms> {
+    symbols: &'syms Symbols<Sem>,
     // Only bindings can be forall generalizations, expressions themselves cannot.
     expr_types: RefCell<HashMap<NodeId, InferType>>,
     symbol_types: RefCell<HashMap<Symbol, PolyType<InferType>>>,
@@ -162,9 +163,10 @@ struct RawContext {
     id_provider: IdProvider,
 }
 
-impl RawContext {
-    pub fn new() -> Self {
+impl<'syms> RawContext<'syms> {
+    pub fn new(symbols: &'syms Symbols<Sem>) -> Self {
         Self {
+            symbols,
             expr_types: RefCell::new(HashMap::new()),
             symbol_types: RefCell::new(HashMap::new()),
             type_parameters: RefCell::new(HashMap::new()),
@@ -179,14 +181,14 @@ impl RawContext {
 
 /// Context for type-checking and inference.
 #[derive(Debug, Clone, Copy)]
-struct Context<'raw> {
+struct Context<'raw, 'syms> {
     forall_level: usize,
-    raw: &'raw RawContext,
+    raw: &'raw RawContext<'syms>,
 }
 
-impl<'raw> Context<'raw> {
+impl<'raw, 'syms> Context<'raw, 'syms> {
     /// Creates a new context.
-    pub fn new(raw: &'raw RawContext) -> Self {
+    pub fn new(raw: &'raw RawContext<'syms>) -> Self {
         Self {
             forall_level: 0,
             raw
@@ -261,6 +263,11 @@ impl<'raw> Context<'raw> {
                 var
             }
         }
+    }
+
+    /// Gets the original set of symbols.
+    pub fn symbols(&self) -> &'syms Symbols<Sem> {
+        self.raw.symbols
     }
 }
 
@@ -1243,7 +1250,7 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
             .collect::<Vec<_>>()
         );
 
-    let raw_ctx = RawContext::new();
+    let raw_ctx = RawContext::new(ast.symbols());
     let ctx = Context::new(&raw_ctx);
 
     let mut binding_vars = HashMap::new();
