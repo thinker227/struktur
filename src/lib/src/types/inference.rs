@@ -10,7 +10,7 @@
 
 mod var;
 
-use std::{cell::RefCell, collections::{HashMap, hash_map::Entry}, sync::Arc};
+use std::{cell::RefCell, collections::{HashMap, HashSet, hash_map::Entry}, sync::Arc};
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
@@ -47,6 +47,13 @@ pub enum TypeCheckError {
         span: TextSpan,
         var: String,
         ty: String,
+    },
+
+    #[error("The type variable `{name}` declared in an explicit forall generalization is not used within the generalized type")]
+    UnusedTypeVariable {
+        #[label("Has to be used within this type")]
+        ty_span: TextSpan,
+        name: String,
     },
 
     #[error("Higher-rank type is not allowed as the annotated type of an expression")]
@@ -348,22 +355,60 @@ fn generate_type(ctx: &Context, tyexpr: &TyExpr<Sem>) -> InferResult<PolyType<Mo
             })))
         }
 
-        TyExpr::Forall(forall) => {
-            let vars = forall.vars.iter()
+        TyExpr::Forall(forall_expr) => {
+            let vars = forall_expr.vars.iter()
                 .map(|var| ctx.get_or_add_type_var(*var))
                 .collect();
 
-            let target = generate_type(ctx, &forall.ty)?
-                .prohibit_forall(forall.ty.span())?;
+            let target = generate_type(ctx, &forall_expr.ty)?
+                .prohibit_forall(forall_expr.ty.span())?;
 
-            PolyType::Forall(Forall {
+            let forall = Forall {
                 vars,
                 target
-            })
+            };
+
+            if let Err(index) = ensure_vars_used(&forall) {
+                let var_symbol = forall_expr.vars[index];
+                let name = ctx.symbols().get(var_symbol).name().clone();
+
+                return Err(TypeCheckError::UnusedTypeVariable {
+                    ty_span: forall_expr.ty.span(),
+                    name
+                })
+            }
+
+            PolyType::Forall(forall)
         }
     };
 
     Ok(ty)
+}
+
+fn ensure_vars_used(forall: &Forall<MonoType<Pruned>>) -> Result<(), usize> {
+    fn go(ty: &MonoType<Pruned>, used: &mut HashSet<TypeVar>) {
+        match ty {
+            MonoType::Primitive(_) => {}
+            MonoType::Function(function_type) => {
+                go(&function_type.param, used);
+                go(&function_type.ret, used);
+            }
+            MonoType::Var(type_var) => {
+                used.insert(*type_var);
+            }
+        }
+    }
+
+    let mut used = HashSet::new();
+    go(&forall.target, &mut used);
+
+    for (index, var) in forall.vars.iter().enumerate() {
+        if !used.contains(var) {
+            return Err(index);
+        }
+    }
+
+    Ok(())
 }
 
 impl<Ty> PolyType<Ty> {
