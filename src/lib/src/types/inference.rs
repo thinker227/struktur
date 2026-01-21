@@ -14,7 +14,7 @@ use std::{cell::RefCell, collections::{HashMap, HashSet, hash_map::Entry}, sync:
 
 use derivative::Derivative;
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex as GraphNode}};
-use crate::{ast::{visit::{VisitT, Visitor}, *}, id::IdProvider, patterns::{Cases, compile_pattern}, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind, Symbols}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}, visit};
+use crate::{ast::{visit::{VisitT, Visitor}, *}, id::IdProvider, patterns::{Cases, compile_pattern}, stage::{Sem, Typed}, symbols::{Symbol, SymbolKind, Symbols, TypeVarSymbol}, text_span::TextSpan, types::{Forall, FunctionType, MonoType, PolyType, Primitive, Pruned, Repr, TypeVar, TypedBindingData, TypedExprData, TypedVariableData, pretty_print::{PrettyPrint, PrintCtx, pretty_print_with}}, visit};
 
 pub use self::var::MetaVar;
 
@@ -265,7 +265,10 @@ impl<'raw, 'syms> Context<'raw, 'syms> {
         match borrow.entry(type_var) {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
-                let var = TypeVar(self.raw.id_provider.next());
+                let var = TypeVar {
+                    id: self.raw.id_provider.next(),
+                    declaring_symbol: Some(type_var)
+                };
                 entry.insert(var);
                 var
             }
@@ -532,7 +535,10 @@ fn unify(a: &InferType, b: &InferType, level: usize, source: TextSpan) -> InferR
 /// Returns [`Err`] if the type does not contain any unsolved unification variables.
 fn generalize(ctx: &Context, ty: InferType) -> Result<Forall<InferType>, InferType> {
     fn visit(ctx: &Context, vars: &mut Vec<TypeVar>, ty: &InferType) {
-        static PROVIDER: IdProvider<TypeVar> = IdProvider::new(TypeVar);
+        static PROVIDER: IdProvider<TypeVar> = IdProvider::new(|id| TypeVar {
+            id,
+            declaring_symbol: None
+        });
 
         match ty {
             InferType::Type(MonoType::Function(function)) => {
@@ -1139,7 +1145,10 @@ impl Embedder {
                     ty: self.get_symbol_type(symbol)
                 }
             )),
-            SymbolKind::TypeVar(_) => todo!()
+            SymbolKind::TypeVar(var) => SymbolKind::TypeVar(TypeVarSymbol {
+                decl: var.decl,
+                name: var.name.clone()
+            })
         }
     }
 

@@ -8,7 +8,7 @@ pub mod pretty_print;
 use std::{fmt::Debug, sync::Arc};
 use derivative::Derivative;
 
-use crate::{id::Id, types::pretty_print::PrettyPrint};
+use crate::{id::Id, symbols::Symbol, types::pretty_print::PrettyPrint};
 
 pub use self::inference::{TypeCheckError, type_check};
 
@@ -96,7 +96,10 @@ pub struct Forall<Ty> {
 
 /// A type variable introducted by a [`Forall`] generalization, aka. a type parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeVar(Id);
+pub struct TypeVar {
+    id: Id,
+    declaring_symbol: Option<Symbol>,
+}
 
 impl<R: Repr> MonoType<R> {
     /// The unit single-value type.

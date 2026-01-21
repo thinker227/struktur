@@ -148,7 +148,10 @@ impl<Ty: PrettyPrint> PrettyPrint for Forall<Ty> {
 fn foo() {
     use crate::{id::IdProvider, types::{Pruned, FunctionType}};
 
-    let vars = IdProvider::new(TypeVar);
+    let vars = IdProvider::new(|id| TypeVar {
+        id,
+        declaring_symbol: None
+    });
     let a = vars.next();
     let b = vars.next();
 
