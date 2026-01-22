@@ -1279,14 +1279,16 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
             if let Some(ref ann) = binding.ty {
                 let ann = generate_type(&ctx, ann)?;
 
+                // Important that we register the annotated type as the type of the symbol
+                // before inferring the body because otherwise the binding could not reference itself.
+                ctx.add_symbol_ty(*item, ann.clone().map(|ty| InferType::Type(ty.into()))).unwrap();
+
                 let ctx = ctx.extend();
 
                 match &ann {
                     PolyType::Forall(forall) => check_forall(&ctx, &binding.body, forall)?,
                     PolyType::Type(ty) => check(&ctx, &binding.body, ty)?
                 }
-
-                ctx.add_symbol_ty(*item, ann.map(|ty| InferType::Type(ty.into()))).unwrap();
 
                 continue;
             }
