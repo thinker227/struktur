@@ -26,6 +26,8 @@ impl Display for Token<'_> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
     Equals,
+    Colon,
+    Dot,
     Backslash,
     Bar,
     Underscore,
@@ -40,7 +42,9 @@ pub enum TokenKind {
     If,
     Then,
     Else,
+    Forall,
     Name,
+    TypeVarName,
     Number,
     String,
     EndOfInput,
@@ -51,6 +55,8 @@ impl TokenKind {
         use TokenKind::*;
         match self {
             Equals => Some("="),
+            Colon => Some(":"),
+            Dot => Some("."),
             Backslash => Some("\\"),
             Bar => Some("|"),
             Underscore => Some("_"),
@@ -65,7 +71,9 @@ impl TokenKind {
             If => Some("if"),
             Then => Some("then"),
             Else => Some("else"),
+            Forall => Some("forall"),
             Name => None,
+            TypeVarName => None,
             Number => None,
             String => None,
             EndOfInput => None,
@@ -76,6 +84,7 @@ impl TokenKind {
         use TokenKind::*;
         match self {
             Name => "name",
+            TypeVarName => "type variable name",
             Number => "number",
             String => "string",
             EndOfInput => "end of input",
@@ -282,6 +291,11 @@ impl<'src> Lexer<'src> {
             return LexResult::Ok(());
         }
 
+        if let Some(len) = self.type_var_name()? {
+            self.push_token(PartialToken { chars: len.chars, kind: TokenKind::TypeVarName })?;
+            return LexResult::Ok(());
+        }
+
         if let Some(len) = self.number()? {
             self.push_token(PartialToken { chars: len.chars, kind: TokenKind::Number })?;
             return LexResult::Ok(());
@@ -327,6 +341,37 @@ impl<'src> Lexer<'src> {
             LexResult::Ok(Some((&self.source[..name_length.bytes], name_length)))
         } else {
             LexResult::Ok(None)
+        }
+    }
+
+    fn type_var_name(&self) -> LexResult<Option<StrLen>> {
+        let mut chars = self.source.chars();
+
+        if chars.next() != Some('\'') {
+            return LexResult::Ok(None);
+        }
+
+        let mut char_len = 1;
+        let mut byte_len = 1;
+
+        for c in chars {
+            if !can_appear_in_name(c) {
+                break;
+            }
+
+            char_len += 1;
+            byte_len += c.len_utf8();
+        }
+
+        if char_len == 0 {
+            LexResult::Err(ParseError::MalformedTypeVarName {
+                tick_span: TextSpan::new(self.offset, 1)
+            })
+        } else {
+            LexResult::Ok(Some(StrLen {
+                chars: char_len,
+                bytes: byte_len
+            }))
         }
     }
 
@@ -388,6 +433,8 @@ impl<'src> Lexer<'src> {
         let single = self.current()?;
         if let Some(kind) = match single {
             '=' => Some(Equals),
+            ':' => Some(Colon),
+            '.' => Some(Dot),
             '\\' => Some(Backslash),
             '|' => Some(Bar),
             '_' => Some(Underscore),
@@ -438,6 +485,7 @@ fn keyword(s: &str) -> Option<TokenKind> {
         "if" => Some(If),
         "then" => Some(Then),
         "else" => Some(Else),
+        "forall" => Some(Forall),
         _ => None
     }
 }

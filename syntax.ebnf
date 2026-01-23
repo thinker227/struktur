@@ -2,7 +2,7 @@ root = item* ;
 
 item = binding ;
 
-binding = 'let' NAME '=' expr ;
+binding = 'let' NAME typeAnn? '=' expr ;
 
 expr = '(' ')'                 (* Unit *)
      | NUMBER                  (* Int *)
@@ -16,6 +16,7 @@ expr = '(' ')'                 (* Unit *)
                                   Does not permit trailing let bindings, lambdas,
                                   or if expressions without parens. *)
      | '(' expr ')'            (* Syntactic grouping *)
+     | '(' expr typeAnn ')'    (* Type annotation *)
      ;
 
 let = 'let' pattern '=' expr 'in' expr ;
@@ -26,10 +27,23 @@ lambda = 'fun' '|'? case ('|' case)* ;
 
 case = pattern '->' expr ;
 
-pattern = '_'                  (* Wildcard *)
-        | NAME                 (* Wildcard variable *)
-        | '(' ')'              (* Unit *)
-        | NUMBER               (* Int *)
-        | 'true' | 'false'     (* Bool *)
-        | '(' pattern ')'      (* Syntactic grouping *)
+pattern = '_'                     (* Wildcard *)
+        | NAME                    (* Wildcard variable *)
+        | '(' ')'                 (* Unit *)
+        | NUMBER                  (* Int *)
+        | 'true' | 'false'        (* Bool *)
+        | '(' pattern ')'         (* Syntactic grouping *)
+        | '(' pattern typeAnn ')' (* Type annotation *)
         ;
+
+typeAnn = ':' type ;
+
+type = '(' ')'                         (* Unit *)
+     | 'Int'                           (* Int *)
+     | 'Bool'                          (* Bool *)
+     | 'String'                        (* String *)
+     | TYPE_VAR                        (* Type variable *)
+     | type '->' type                  (* Function *)
+     | 'forall' TYPE_VAR* '.' type     (* Quantifier *)
+     | '(' type ')'                    (* Syntactic grouping *)
+     ;

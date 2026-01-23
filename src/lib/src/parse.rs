@@ -25,12 +25,34 @@ pub enum ParseError {
         string_span: TextSpan,
     },
 
+    #[error("Expected name after `'`")]
+    MalformedTypeVarName {
+        #[label]
+        tick_span: TextSpan,
+    },
+
     #[error("Found {found} token, expected {expected}")]
     UnexpectedToken {
         #[label]
         span: TextSpan,
         found: TokenKind,
         expected: String,
+    },
+
+    #[error("Type annotation has to be enclosed in parentheses")]
+    TyAnnNotAllowed {
+        #[label("Assuming you intended to annotate this {kind}")]
+        target_span: TextSpan,
+        #[label("Enclose this in parentheses")]
+        full_span: TextSpan,
+        kind: String,
+    },
+
+    #[error("Unknown type `{name}`")]
+    UnknownType {
+        #[label]
+        span: TextSpan,
+        name: String,
     }
 }
 
@@ -57,19 +79,38 @@ enum CurrentToken<'src> {
     AtEnd,
 }
 
-/// The context in which an atom expression is parsed.
+/// The context in which an expression is parsed.
 ///
 /// For expressions starting with a keyword (such as `fun` in lambda expressions,
 /// `if` in if-else expressions, and *especially* `let` in let-expressions),
 /// this is used to distinguish whether the expression is allowed to be parsed immediately after
 /// another expression, in order to not make syntax like `let x = x let y = y` ambiguous.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ExprContext {
-    /// The expression is parsed as normal.
-    Normal,
-    /// The expression is forbidden from being a keyword-led expression.
-    /// Only used as the context for the argument expression in function applications.
-    Trailing,
+struct ExprContext {
+    /// Whether expressions starting with a keyword are allowed.
+    /// Needed in order to not permit weird syntax like `f fun x -> y`.
+    allow_keyword: bool,
+    /// Whether type annotation expressions are allowed.
+    allow_tyann: bool,
+}
+
+/// The context in which an atom pattern is parsed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PatternContext {
+    /// Whether type annotation patterns are allowed.
+    /// Needed specifically in order to not allow the ambiguous syntax `fun x : Int -> y`
+    /// (which could be parsed as either `fun (x : Int) -> y` or `fun x : (Int -> y)`).
+    allow_tyann: bool,
+}
+
+/// A parsed expression.
+#[derive(Debug, Clone)]
+struct ParsedExpr {
+    /// The expression node.
+    expr: Expr<Parse>,
+    /// Whether the expression is considered 'complex'
+    /// and may therefore not be the direct target of a type annotation.
+    complex: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -182,7 +223,6 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
             None => eoi.span
         };
 
-        // Ok(Root(items, self.node_data(span)))
         Ok(Root {
             data: self.node_data(span),
             items
@@ -212,26 +252,70 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     fn parse_binding(&mut self) -> ParseResult<Binding<Parse>> {
         let r#let = self.expect(TokenKind::Let)?;
         let name = self.expect(TokenKind::Name)?;
+
+        let ty = self.try_parse_type_ann()?;
+
         self.expect(TokenKind::Equals)?;
-        let body = self.parse_expr()?;
+        let body = self.parse_expr(ExprContext {
+            allow_keyword: true,
+            allow_tyann: true
+        })?.expr;
 
         let span = TextSpan::between(r#let.span, body.span());
 
         Ok(Binding {
             data: self.node_data(span),
             symbol: name.text.to_owned(),
+            ty,
             body
         })
     }
 
-    fn parse_expr(&mut self) -> ParseResult<Expr<Parse>> {
-        self.parse_application_expr()
+    fn parse_expr(&mut self, ctx: ExprContext) -> ParseResult<ParsedExpr> {
+        self.parse_tyann_expr(ctx)
     }
 
-    fn parse_application_expr(&mut self) -> ParseResult<Expr<Parse>> {
-        let mut result = self.parse_atom_expr(ExprContext::Normal)?;
+    fn parse_tyann_expr(&mut self, ctx: ExprContext) -> ParseResult<ParsedExpr> {
+        let ParsedExpr { mut expr, mut complex } = self.parse_application_expr()?;
 
-        while let Some(expr) = self.try_parse_atom_expr(ExprContext::Trailing)? {
+        if ctx.allow_tyann {
+            // Type annotations are not allowed to be chained, but we nonetheless parse them in a loop
+            // just so that `x : Int : Int` will have a nicer error message.
+            while let Some(ty) = self.try_parse_type_ann()? {
+                let span = TextSpan::between(expr.span(), ty.span());
+
+                if !complex {
+                    expr = Expr::TyAnn(Box::new(TyAnnExpr {
+                        data: self.node_data(span),
+                        expr,
+                        ty
+                    }));
+                    complex = true;
+                } else {
+                    return Err(ParseError::TyAnnNotAllowed {
+                        target_span: expr.span(),
+                        full_span: span,
+                        kind: "expression".to_owned()
+                    });
+                };
+            }
+        }
+
+        Ok(ParsedExpr { expr, complex })
+    }
+
+    fn parse_application_expr(&mut self) -> ParseResult<ParsedExpr> {
+        let ParsedExpr { expr: mut result, mut complex } = self.parse_atom_expr(ExprContext {
+            allow_keyword: true,
+            allow_tyann: true
+        })?;
+
+        while let Some(ParsedExpr { expr, .. }) = self.try_parse_atom_expr(ExprContext {
+            allow_keyword: false,
+            // A type annotation is specficially not allowed here in order to allow
+            // `f x : T` to parse as `(f x) : T` instead of `f (x : T)`.
+            allow_tyann: false
+        })? {
             let span = TextSpan::between(result.span(), expr.span());
 
             result = Expr::Apply(Box::new(Application {
@@ -239,101 +323,148 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                 target: result,
                 arg: expr
             }));
+
+            complex = false;
         }
 
-        Ok(result)
+        Ok(ParsedExpr { expr: result, complex })
     }
 
-    fn parse_atom_expr(&mut self, ctx: ExprContext) -> ParseResult<Expr<Parse>> {
+    fn parse_atom_expr(&mut self, ctx: ExprContext) -> ParseResult<ParsedExpr> {
         self.try_parse_atom_expr(ctx)?.ok_or_else(|| {
             let current = self.current();
             ParseError::unexpected_token(current.span, current.kind, "expression")
         })
     }
 
-    fn try_parse_atom_expr(&mut self, ctx: ExprContext) -> Result<Option<Expr<Parse>>, ParseError> {
-        let expr = match self.current().kind {
+    fn try_parse_atom_expr(&mut self, ctx: ExprContext) -> Result<Option<ParsedExpr>, ParseError> {
+        let result = match self.current().kind {
             TokenKind::OpenParen => {
                 let open_paren = self.advance();
 
                 if self.current().kind == TokenKind::CloseParen {
                     let close_paren = self.advance();
                     let span = TextSpan::between(open_paren.span, close_paren.span);
-                    Expr::Unit(UnitExpr {
-                        data: self.expr_data(span)
-                    })
+
+                    ParsedExpr {
+                        expr: Expr::Unit(UnitExpr {
+                            data: self.expr_data(span)
+                        }),
+                        complex: false
+                    }
                 } else {
-                    let expr = self.parse_expr()?;
+                    let expr = self.parse_expr(ExprContext {
+                        allow_keyword: true,
+                        allow_tyann: true
+                    })?.expr;
                     self.expect(TokenKind::CloseParen)?;
-                    return Ok(Some(expr));
+                    return Ok(Some(ParsedExpr { expr, complex: false }));
                 }
             }
 
             TokenKind::Number => {
                 let number = self.advance();
                 let val = number.text.parse().unwrap();
-                Expr::Int(IntExpr {
-                    data: self.expr_data(number.span),
-                    val
-                })
+
+                ParsedExpr {
+                    expr: Expr::Int(IntExpr {
+                        data: self.expr_data(number.span),
+                        val
+                    }),
+                    complex: false
+                }
             }
 
             TokenKind::True | TokenKind::False => {
                 let bool = self.advance();
                 let val = bool.kind == TokenKind::True;
-                Expr::Bool(BoolExpr {
-                    data: self.expr_data(bool.span),
-                    val
-                })
+
+                ParsedExpr {
+                    expr: Expr::Bool(BoolExpr {
+                        data: self.expr_data(bool.span),
+                        val
+                    }),
+                    complex: false
+                }
             }
 
             TokenKind::String => {
                 let str = self.advance();
                 let text = str.text;
                 let val = text[1 .. text.len() - 1].to_owned();
-                Expr::String(StringExpr {
-                    data: self.expr_data(str.span),
-                    val
-                })
+
+                ParsedExpr {
+                    expr: Expr::String(StringExpr {
+                        data: self.expr_data(str.span),
+                        val
+                    }),
+                    complex: false
+                }
             }
 
             TokenKind::Name => {
                 let name = self.advance();
                 let var = name.text.to_owned();
-                Expr::Var(VarExpr {
-                    data: self.expr_data(name.span),
-                    symbol: var
-                })
+
+                ParsedExpr {
+                    expr: Expr::Var(VarExpr {
+                        data: self.expr_data(name.span),
+                        symbol: var
+                    }),
+                    complex: false
+                }
             }
 
-            TokenKind::Let if ctx == ExprContext::Normal => {
+            TokenKind::Let if ctx.allow_keyword => {
                 let r#let = self.parse_let_expr()?;
-                Expr::Bind(Box::new(r#let))
+                ParsedExpr {
+                    expr: Expr::Bind(Box::new(r#let)),
+                    complex: true
+                }
             }
 
-            TokenKind::Fun if ctx == ExprContext::Normal => {
+            TokenKind::Fun if ctx.allow_keyword => {
                 let lambda = self.parse_lambda_expr()?;
-                Expr::Lambda(Box::new(lambda))
+                ParsedExpr {
+                    expr: Expr::Lambda(Box::new(lambda)),
+                    complex: true
+                }
             }
 
-            TokenKind::If if ctx == ExprContext::Normal => {
+            TokenKind::If if ctx.allow_keyword => {
                 let if_else = self.parse_if_else_expr()?;
-                Expr::If(Box::new(if_else))
+                ParsedExpr {
+                    expr: Expr::If(Box::new(if_else)),
+                    complex: true
+                }
             }
 
             _ => return Ok(None)
         };
 
-        Ok(Some(expr))
+        Ok(Some(result))
     }
 
     fn parse_let_expr(&mut self) -> ParseResult<Let<Parse>> {
         let r#let = self.expect(TokenKind::Let)?;
-        let pattern = self.parse_pattern()?;
+
+        let pattern = self.parse_pattern(PatternContext {
+            allow_tyann: true
+        })?;
+
         self.expect(TokenKind::Equals)?;
-        let value = self.parse_expr()?;
+
+        let value = self.parse_expr(ExprContext {
+            allow_keyword: true,
+            allow_tyann: true
+        })?.expr;
+
         self.expect(TokenKind::In)?;
-        let expr = self.parse_expr()?;
+
+        let expr = self.parse_expr(ExprContext {
+            allow_keyword: true,
+            allow_tyann: true
+        })?.expr;
 
         let span = TextSpan::between(r#let.span, expr.span());
 
@@ -347,11 +478,25 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
 
     fn parse_if_else_expr(&mut self) -> ParseResult<IfElse<Parse>> {
         let r#if = self.expect(TokenKind::If)?;
-        let condition = self.parse_expr()?;
+
+        let condition = self.parse_expr(ExprContext {
+            allow_keyword: false,
+            allow_tyann: true
+        })?.expr;
+
         self.expect(TokenKind::Then)?;
-        let if_true = self.parse_expr()?;
+
+        let if_true = self.parse_expr(ExprContext {
+            allow_keyword: true,
+            allow_tyann: true
+        })?.expr;
+
         self.expect(TokenKind::Else)?;
-        let if_false = self.parse_expr()?;
+
+        let if_false = self.parse_expr(ExprContext {
+            allow_keyword: true,
+            allow_tyann: true
+        })?.expr;
 
         let span = TextSpan::between(r#if.span, if_false.span());
 
@@ -384,9 +529,14 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
     }
 
     fn parse_case(&mut self) -> ParseResult<Case<Parse>> {
-        let pattern = self.parse_pattern()?;
+        let pattern = self.parse_pattern(PatternContext {
+            allow_tyann: false
+        })?;
         self.expect(TokenKind::DashGreaterThan)?;
-        let body = self.parse_expr()?;
+        let body = self.parse_expr(ExprContext {
+            allow_keyword: true,
+            allow_tyann: true
+        })?.expr;
 
         let span = TextSpan::between(pattern.span(), body.span());
 
@@ -397,7 +547,36 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         })
     }
 
-    fn parse_pattern(&mut self) -> ParseResult<Pattern<Parse>> {
+    fn parse_pattern(&mut self, ctx: PatternContext) -> ParseResult<Pattern<Parse>> {
+        self.parse_tyann_pattern(ctx)
+    }
+
+    fn parse_tyann_pattern(&mut self, mut ctx: PatternContext) -> ParseResult<Pattern<Parse>> {
+        let mut pattern = self.parse_atom_pattern()?;
+
+        while let Some(ty) = self.try_parse_type_ann()? {
+            let span = TextSpan::between(pattern.span(), ty.span());
+
+            if ctx.allow_tyann {
+                pattern = Pattern::TyAnn(Box::new(TyAnnPattern {
+                    data: self.node_data(span),
+                    pat: pattern,
+                    ty
+                }));
+                ctx.allow_tyann = false;
+            } else {
+                return Err(ParseError::TyAnnNotAllowed {
+                    target_span: pattern.span(),
+                    full_span: span,
+                    kind: "pattern".to_owned()
+                });
+            }
+        }
+
+        Ok(pattern)
+    }
+
+    fn parse_atom_pattern(&mut self) -> ParseResult<Pattern<Parse>> {
         let pattern = match self.current().kind {
             TokenKind::Underscore => {
                 let underscore = self.advance();
@@ -423,9 +602,11 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                         data: self.node_data(span)
                     })
                 } else {
-                    let pattern = self.parse_pattern()?;
+                    let pattern = self.parse_pattern(PatternContext {
+                        allow_tyann: true
+                    })?;
                     self.expect(TokenKind::CloseParen)?;
-                    return Ok(pattern);
+                    pattern
                 }
             }
 
@@ -458,6 +639,131 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         };
 
         Ok(pattern)
+    }
+
+    fn try_parse_type_ann(&mut self) -> ParseResult<Option<TyExpr<Parse>>> {
+        if self.advance_if(TokenKind::Colon).is_some() {
+            let ty = self.parse_tyexpr()?;
+            Ok(Some(ty))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn parse_tyexpr(&mut self) -> ParseResult<TyExpr<Parse>> {
+        self.parse_function_tyexpr()
+    }
+
+    fn parse_function_tyexpr(&mut self) -> ParseResult<TyExpr<Parse>> {
+        let ty = self.parse_atom_tyexpr()?;
+
+        if self.advance_if(TokenKind::DashGreaterThan).is_some() {
+            let ret = self.parse_tyexpr()?;
+
+            let span = TextSpan::between(ty.span(), ret.span());
+
+            Ok(TyExpr::Function(Box::new(FunctionTyExpr {
+                data: self.node_data(span),
+                param: ty,
+                ret
+            })))
+        } else {
+            Ok(ty)
+        }
+    }
+
+    fn parse_atom_tyexpr(&mut self) -> ParseResult<TyExpr<Parse>> {
+        self.try_parse_atom_tyexpr()?.ok_or_else(|| {
+            let current = self.current();
+            ParseError::unexpected_token(current.span, current.kind, "type")
+        })
+    }
+
+    fn try_parse_atom_tyexpr(&mut self) -> Result<Option<TyExpr<Parse>>, ParseError> {
+        let expr = match self.current().kind {
+            TokenKind::OpenParen => {
+                let open_paren = self.advance();
+
+                if self.current().kind == TokenKind::CloseParen {
+                    let close_paren = self.advance();
+                    let span = TextSpan::between(open_paren.span, close_paren.span);
+                    TyExpr::Unit(UnitTyExpr {
+                        data: self.node_data(span)
+                    })
+                } else {
+                    let ty = self.parse_tyexpr()?;
+                    self.expect(TokenKind::CloseParen)?;
+                    return Ok(Some(ty));
+                }
+            }
+
+            TokenKind::Name => {
+                let name = self.advance();
+
+                let span = name.span;
+
+                match name.text {
+                    "Int" => TyExpr::Int(IntTyExpr {
+                        data: self.node_data(span)
+                    }),
+                    "Bool" => TyExpr::Bool(BoolTyExpr {
+                        data: self.node_data(span)
+                    }),
+                    "String" => TyExpr::String(StringTyExpr {
+                        data: self.node_data(span)
+                    }),
+
+                    _ => return Err(ParseError::UnknownType {
+                        span,
+                        name: name.text.to_owned()
+                    })
+                }
+            }
+
+            TokenKind::TypeVarName => {
+                let var = self.advance();
+
+                let name = &var.text[1..];
+
+                TyExpr::Var(VarTyExpr {
+                    data: self.node_data(var.span),
+                    symbol: name.to_owned()
+                })
+            }
+
+            TokenKind::Forall => {
+                let forall = self.advance();
+
+                let mut vars = Vec::new();
+                while let Some(var) = self.advance_if(TokenKind::TypeVarName) {
+                    let name = &var.text[1..];
+                    vars.push(name.to_owned());
+                }
+
+                if self.advance_if(TokenKind::Dot).is_none() {
+                    let current = self.current();
+                    return Err(ParseError::UnexpectedToken {
+                        span: current.span,
+                        found: current.kind,
+                        expected: "type variable name or `.`".to_owned()
+                    });
+                }
+
+                let inner = self.parse_tyexpr()?;
+
+                let span = TextSpan::between(forall.span, inner.span());
+
+                TyExpr::Forall(Box::new(ForallTyExpr {
+                    data: self.node_data(span),
+                    vars,
+                    ty: inner
+                }))
+            }
+
+            _ => return Ok(None)
+        };
+
+        Ok(Some(expr))
     }
 }
 

@@ -16,6 +16,12 @@
             "include": "#parameters"
         },
         {
+            "include": "#type-variables"
+        },
+        {
+            "include": "#types-names"
+        },
+        {
             "include": "#local-variables"
         },
         {
@@ -44,11 +50,11 @@
                 },
                 {
                     "name": "keyword.other.struktur",
-                    "match": "\\b(in)\\b"
+                    "match": "\\b(in|forall)\\b"
                 },
                 {
                     "name": "keyword.other.struktur",
-                    "match": "->"
+                    "match": "->|\\."
                 },
                 {
                     "name": "constant.other.struktur",
@@ -60,7 +66,7 @@
                 },
                 {
                     "name": "meta.punctuation.struktur",
-                    "match": "=|\\(|\\)"
+                    "match": "=|\\(|\\)|\\:"
                 },
                 {
                     "name": "keyword.control.struktur",
@@ -123,6 +129,14 @@
                 }
             ]
 
+        },
+        "type-variables": {
+            "name": "entity.name.type.parameter.struktur",
+            "match": "'\\p{L}+"
+        },
+        "types-names": {
+            "name": "entity.name.type",
+            "match": "\\p{Lu}\\p{L}*"
         },
         "local-variables": {
             "match": "(let)\\s+(\\p{L}+)",

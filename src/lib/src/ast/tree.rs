@@ -25,6 +25,7 @@ enum_node! {
     Item<S> where
     Binding<S> as Binding {
         raw symbol: S::Sym,
+        ty: S::TyAnn,
         body: Expr<S>
     }
 }
@@ -83,7 +84,14 @@ enum_node! {
         condition: Expr<S>,
         if_true: Expr<S>,
         if_false: Expr<S>
-    }
+    },
+    box TyAnn(S::TyAnnExpr)
+}
+
+struct_node! {
+    TyAnnExpr<S> where
+    expr: Expr<S>,
+    ty: TyExpr<S>
 }
 
 struct_node! {
@@ -104,6 +112,32 @@ enum_node! {
     },
     BoolPattern as Bool {
         raw val: bool
+    },
+    box TyAnn(S::TyAnnPattern)
+}
+
+struct_node! {
+    TyAnnPattern<S> where
+    pat: Pattern<S>,
+    ty: TyExpr<S>
+}
+
+enum_node! {
+    TyExpr<S> where
+    UnitTyExpr as Unit {},
+    IntTyExpr as Int {},
+    BoolTyExpr as Bool {},
+    StringTyExpr as String {},
+    VarTyExpr<S> as Var {
+        raw symbol: S::Sym
+    },
+    box FunctionTyExpr<S> as Function {
+        param: TyExpr<S>,
+        ret: TyExpr<S>
+    },
+    box ForallTyExpr<S> as Forall {
+        raw vars: Vec<S::Sym>,
+        ty: TyExpr<S>
     }
 }
 

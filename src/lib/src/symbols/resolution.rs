@@ -1,6 +1,6 @@
-use std::collections::hash_map::{HashMap, Entry};
+use std::collections::hash_map::HashMap;
 
-use crate::{ast::*, stage::{Parse, Sem}, symbols::{BindingSymbol, Symbol, SymbolKind, Symbols, VariableSymbol}, text_span::TextSpan};
+use crate::{ast::*, stage::{Parse, Sem}, symbols::{BindingSymbol, Symbol, SymbolKind, Symbols, TypeVarSymbol, VariableSymbol}, text_span::TextSpan};
 
 /// Resolves all the symbols of an AST.
 pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
@@ -14,27 +14,48 @@ pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum SymbolResError {
-    #[error("A symbol with the name `{name}` has already been declared in this scope")]
+    #[error("A {kind} with the name `{name}` has already been declared in this scope")]
     DuplicateDeclaration {
         #[label]
         span: TextSpan,
         name: String,
         #[label("Previously declared here")]
         previous_declaration: TextSpan,
+        kind: String,
     },
 
-    #[error("No symbol with the name `{name}` is available in this scope")]
+    #[error("No {kind} with the name `{name}` is available in this scope")]
     Undeclared {
         #[label]
         span: TextSpan,
         name: String,
+        kind: String,
     },
 }
 
 type SymResult<T> = Result<T, SymbolResError>;
 
+#[derive(Debug, Clone)]
+struct Named {
+    value: Option<Symbol>,
+    type_var: Option<Symbol>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NameKind {
+    Value,
+    TypeVar,
+}
+
+#[derive(Debug, Clone)]
+enum ActiveForall {
+    Implicit,
+    Explicit,
+}
+
 struct Resolver<'ast> {
-    scopes: Vec<HashMap<String, Symbol>>,
+    scopes: Vec<HashMap<String, Named>>,
+    foralls: Vec<ActiveForall>,
     symbols: Symbols<Sem>,
     ast: &'ast Ast<Parse>,
 }
@@ -43,6 +64,7 @@ impl<'ast> Resolver<'ast> {
     fn new(ast: &'ast Ast<Parse>) -> Self {
         Self {
             scopes: vec![HashMap::new()],
+            foralls: Vec::new(),
             symbols: Symbols::new(),
             ast
         }
@@ -55,26 +77,48 @@ impl<'ast> Resolver<'ast> {
         res
     }
 
+    fn in_forall<R>(&mut self, forall: ActiveForall, f: impl FnOnce(&mut Self) -> SymResult<R>) -> SymResult<R> {
+        self.foralls.push(forall);
+        let res = f(self);
+        self.foralls.pop();
+        res
+    }
+
     fn register(&mut self, name: String, data: SymbolKind<Sem>) -> Result<Symbol, Symbol> {
         let Resolver { scopes, symbols, .. } = self;
 
         let scope = scopes.last_mut()
             .expect("there should always be a scope");
 
-        match scope.entry(name) {
-            Entry::Occupied(entry) => Err(*entry.get()),
-            Entry::Vacant(entry) => {
+        let named = scope.entry(name)
+            .or_insert_with(|| Named {
+                value: None,
+                type_var: None
+            });
+
+        let spot = match data {
+            SymbolKind::Var(_) => &mut named.value,
+            SymbolKind::Binding(_) => &mut named.value,
+            SymbolKind::TypeVar(_) => &mut named.type_var,
+        };
+
+        match spot {
+            Some(x) => Err(*x),
+            None => {
                 let symbol = symbols.register(data);
-                entry.insert(symbol);
+                *spot = Some(symbol);
                 Ok(symbol)
             }
         }
     }
 
-    fn look_up(&self, name: &str) -> Option<Symbol> {
+    fn look_up(&self, name: &str, kind: NameKind) -> Option<Symbol> {
         for scope in self.scopes.iter().rev() {
-            if let Some(sym) = scope.get(name) {
-                return Some(*sym);
+            if let Some(named) = scope.get(name) {
+                return match kind {
+                    NameKind::Value => named.value,
+                    NameKind::TypeVar => named.type_var,
+                };
             }
         }
 
@@ -120,7 +164,8 @@ impl<'ast> Resolver<'ast> {
                 SymbolResError::DuplicateDeclaration {
                     span: item.span(),
                     name,
-                    previous_declaration: prev_span
+                    previous_declaration: prev_span,
+                    kind: "binding".to_owned()
                 }
             })
     }
@@ -137,15 +182,25 @@ impl<'ast> Resolver<'ast> {
     }
 
     fn binding(&mut self, binding: &Binding<Parse>, function_symbol: Symbol) -> SymResult<Binding<Sem>> {
-        let sem_body = self.in_scope(|this| {
-            // This technically doesn't need a scope,
-            // but it's nice just to ensure that symbols don't accidentally leak out.
-            this.expr(&binding.body)
+        let (sem_body, sem_ty) = self.in_scope(|this| {
+            let sem_ty = this.in_forall(ActiveForall::Implicit, |this| {
+                let sem_ty = match &binding.ty {
+                    Some(ty) => Some(this.tyexpr(ty)?),
+                    None => None
+                };
+
+                Ok(sem_ty)
+            })?;
+
+            let sem_body = this.expr(&binding.body)?;
+
+            Ok((sem_body, sem_ty))
         })?;
 
         Ok(Binding {
             data: binding.data,
             body: sem_body,
+            ty: sem_ty,
             symbol: function_symbol
         })
     }
@@ -172,10 +227,11 @@ impl<'ast> Resolver<'ast> {
             }),
 
             Expr::Var(var) => {
-                let var_symbol = self.look_up(&var.symbol)
+                let var_symbol = self.look_up(&var.symbol, NameKind::Value)
                     .ok_or_else(|| SymbolResError::Undeclared {
                         span: TextSpan::empty(0),
-                        name: var.symbol.clone()
+                        name: var.symbol.clone(),
+                        kind: "variable or binding".to_owned()
                     })?;
 
                 Expr::Var(VarExpr {
@@ -188,8 +244,12 @@ impl<'ast> Resolver<'ast> {
                 let sem_value = self.expr(&binding.value)?;
 
                 let (sem_pattern, sem_expr) = self.in_scope(|this| {
-                    let sem_pattern = this.pattern(&binding.pattern)?;
+                    let sem_pattern = this.in_forall(ActiveForall::Implicit, |this| {
+                        this.pattern(&binding.pattern)
+                    })?;
+
                     let sem_expr = this.expr(&binding.expr)?;
+
                     Ok((sem_pattern, sem_expr))
                 })?;
 
@@ -238,6 +298,17 @@ impl<'ast> Resolver<'ast> {
                     if_false: sem_if_false
                 })
             }
+
+            Expr::TyAnn(ann) => {
+                let sem_expr = self.expr(&ann.expr)?;
+                let sem_ty = self.tyexpr(&ann.ty)?;
+
+                Expr::TyAnn(Box::new(TyAnnExpr {
+                    data: ann.data,
+                    expr: sem_expr,
+                    ty: sem_ty
+                }))
+            }
         };
 
         Ok(sem_expr)
@@ -281,8 +352,104 @@ impl<'ast> Resolver<'ast> {
             Pattern::Number(number) => Pattern::Number(number.clone()),
 
             Pattern::Bool(bool) => Pattern::Bool(bool.clone()),
+
+            Pattern::TyAnn(ann) => {
+                let sem_pat = self.pattern(&ann.pat)?;
+                let sem_ty = self.tyexpr(&ann.ty)?;
+
+                Pattern::TyAnn(Box::new(TyAnnPattern {
+                    data: ann.data,
+                    pat: sem_pat,
+                    ty: sem_ty
+                }))
+            }
         };
 
         Ok(sem_pattern)
+    }
+
+    fn tyexpr(&mut self, tyexpr: &TyExpr<Parse>) -> SymResult<TyExpr<Sem>> {
+        let sem_tyexpr = match tyexpr {
+            TyExpr::Unit(unit) => TyExpr::Unit(unit.clone()),
+            TyExpr::Int(int) => TyExpr::Int(int.clone()),
+            TyExpr::Bool(bool) => TyExpr::Bool(bool.clone()),
+            TyExpr::String(string) => TyExpr::String(string.clone()),
+
+            TyExpr::Var(var) => {
+                let name = &var.symbol;
+
+                let symbol = if let Some(symbol) = self.look_up(&var.symbol, NameKind::TypeVar) {
+                    symbol
+                } else if let Some(ActiveForall::Implicit) = self.foralls.last() {
+                    self.register(name.clone(), SymbolKind::TypeVar(TypeVarSymbol {
+                        name: name.clone(),
+                        decl: var.id()
+                    })).expect("todo")
+                } else {
+                    return Err(SymbolResError::Undeclared {
+                        span: var.span(),
+                        name: name.clone(),
+                        kind: "type variable".to_owned()
+                    });
+                };
+
+                TyExpr::Var(VarTyExpr {
+                    data: var.data,
+                    symbol
+                })
+            }
+
+            TyExpr::Function(function) => {
+                let sem_param = self.tyexpr(&function.param)?;
+                let sem_ret = self.tyexpr(&function.ret)?;
+
+                TyExpr::Function(Box::new(FunctionTyExpr {
+                    data: function.data,
+                    param: sem_param,
+                    ret: sem_ret
+                }))
+            }
+
+            TyExpr::Forall(forall) => {
+                self.in_scope(|this| {
+                    let (sem_vars, sem_ty) = this.in_forall(ActiveForall::Explicit, |this| {
+                        let mut sem_vars = Vec::new();
+
+                        for var in &forall.vars {
+                            let symbol = this.register(
+                                var.clone(),
+                                SymbolKind::TypeVar(TypeVarSymbol {
+                                    name: var.clone(),
+                                    decl: forall.id()
+                                }
+                            )).map_err(|prev| {
+                                let prev = this.symbols.get(prev).decl();
+                                let prev_span = this.ast.get_node(prev).span();
+                                SymbolResError::DuplicateDeclaration {
+                                    span: forall.span(),
+                                    name: var.clone(),
+                                    previous_declaration: prev_span,
+                                    kind: "type variable".to_owned()
+                                }
+                            })?;
+
+                            sem_vars.push(symbol);
+                        }
+
+                        let sem_ty = this.tyexpr(&forall.ty)?;
+
+                        Ok((sem_vars, sem_ty))
+                    })?;
+
+                    Ok(TyExpr::Forall(Box::new(ForallTyExpr {
+                        data: forall.data,
+                        vars: sem_vars,
+                        ty: sem_ty
+                    })))
+                })?
+            }
+        };
+
+        Ok(sem_tyexpr)
     }
 }
