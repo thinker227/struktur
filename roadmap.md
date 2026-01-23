@@ -3,7 +3,7 @@
   - [ ] Typed symbol IDs
   - [ ] Top-level binding reference graph
 - [x] Type-checking + inference
-  - [ ] Bidirectional inference
+  - [x] Bidirectional inference
   - [ ] Constraint-based inference
 - [x] CPS conversion + JS codegen
 - [x] Compiler CLI
@@ -12,7 +12,7 @@
 - [x] Comments
 - [ ] Main function
 - [x] Pattern matching
-- [ ] Type annotations
+- [x] Type annotations
 - [ ] Algebraic data types
 - [ ] Operators
 - [ ] Modules
