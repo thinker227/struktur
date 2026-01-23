@@ -950,6 +950,8 @@ fn check_pattern(ctx: &Context, pat: &Pattern<Sem>, expected: &MonoType<Pruned>)
             let ty = generate_type(ctx, &ann.ty)?
                 .prohibit_forall(ann.ty.span())?;
 
+            check_pattern(ctx, &ann.pat, &ty)?;
+
             unify(
                 &InferType::Type(ty.into()),
                 &InferType::Type(expected.clone().into()),
