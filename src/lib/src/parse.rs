@@ -48,6 +48,12 @@ pub enum ParseError {
         kind: String,
     },
 
+    #[error("Empty forall quantifier")]
+    EmptyForall {
+        #[label]
+        span: TextSpan,
+    },
+
     #[error("Unknown type `{name}`")]
     UnknownType {
         #[label]
@@ -744,6 +750,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                 let forall = self.advance();
 
                 let mut vars = Vec::new();
+
                 while let Some(var) = self.advance_if(TokenKind::TypeVarName) {
                     vars.push(Name {
                         data: self.node_data(var.span),
@@ -751,12 +758,21 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
                     });
                 }
 
-                if self.advance_if(TokenKind::Dot).is_none() {
-                    let current = self.current();
-                    return Err(ParseError::UnexpectedToken {
-                        span: current.span,
-                        found: current.kind,
-                        expected: "type variable name or `.`".to_owned()
+                let dot = match self.advance_if(TokenKind::Dot) {
+                    Some(dot) => dot,
+                    None => {
+                        let current = self.current();
+                        return Err(ParseError::UnexpectedToken {
+                            span: current.span,
+                            found: current.kind,
+                            expected: "type variable name or `.`".to_owned()
+                        });
+                    }
+                };
+
+                if vars.is_empty() {
+                    return Err(ParseError::EmptyForall {
+                        span: TextSpan::between(forall.span, dot.span)
                     });
                 }
 
