@@ -49,14 +49,14 @@ pub enum TypeCheckError {
         ty: String,
     },
 
-    #[error("The type variable `{name}` declared in an explicit forall generalization is not used within the generalized type")]
+    #[error("The type variable `'{name}` declared in a forall generalization is not used within the generalized type")]
     UnusedTypeVariable {
-        #[label("Has to be used within this type")]
+        #[label("`'{name}` has to be used within this type")]
         ty_span: TextSpan,
         name: String,
     },
 
-    #[error("Higher-rank type is not allowed as the annotated type of an expression")]
+    #[error("Forall generalizations are not allowed to be nested within other types, nor to be annotated as the type of an expression")]
     ExplicitForallProhibited {
         #[label]
         span: TextSpan,
