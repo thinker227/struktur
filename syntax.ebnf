@@ -33,7 +33,7 @@ pattern = '_'                     (* Wildcard *)
         | NUMBER                  (* Int *)
         | 'true' | 'false'        (* Bool *)
         | '(' pattern ')'         (* Syntactic grouping *)
-        | '(' pattern typeAnn ')' (* Type annotation *)
+        | pattern typeAnn         (* Type annotation *)
         ;
 
 typeAnn = ':' type ;
