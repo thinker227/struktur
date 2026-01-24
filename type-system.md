@@ -1,6 +1,6 @@
 # Type system
 
-Struktur's type system is strongly based on [Hindley-Milner type inference](https://en.wikipedia.org/wiki/Hindley-Milner_type_system) and [System F](https://en.wikipedia.org/wiki/System_F). It is a [rank-2 predicative type system](#higher-rank-polymorphism), featuring [algebraic data types](#algebraic-data-types), [first-class functions](#first-class-functions), [laziness](#laziness), [type functions](#type-functions), [higher-kinded types](#higher-kinded-types), [universal quantification](#universal-quantification), [typeclasses](#typeclasses), and [an effect system](#effect-system).
+Struktur's type system is strongly based on [Hindley-Milner type inference](https://en.wikipedia.org/wiki/Hindley-Milner_type_system) and [System F](https://en.wikipedia.org/wiki/System_F). It <!--is a [rank-2 predicative type system](#higher-rank-polymorphism), featuring--> features [algebraic data types](#algebraic-data-types), [first-class functions](#first-class-functions), <!--[laziness](#laziness),--> [type functions](#type-functions), <!--[higher-kinded types](#higher-kinded-types),--> and [universal quantification](#universal-quantification)<!--, [typeclasses](#typeclasses), and [an effect system](#effect-system)-->.
 
 ## Algebraic data types
 
@@ -59,6 +59,7 @@ type Bool = true | false
 
 Functions can be passed as values to other functions. A function from a value of type `A` to a value of type `B` is written as `A -> B`.
 
+<!--
 ## Laziness
 
 Struktur is *strict* by default, meaning that expressions are evaluated eagerly. In other words, if `x` evaluates to `⊥`, `f x` always evaluates to `⊥`.
@@ -66,6 +67,7 @@ Struktur is *strict* by default, meaning that expressions are evaluated eagerly.
 Strictness can be opted out of by using the `~` type operator. `~T` is the type of a lazily evaluated `T`.
 
 Notably, `A -> ~B` is different from `~(A -> B)`. The former is a function from `A` to a lazily evaluated `B` (i.e. the computation the function performs is lazy), while the latter is a lazily evaluated function from `A` to `B` (i.e. the computation used to compute the function itself is lazy).
+-->
 
 ## Type functions
 
@@ -76,6 +78,7 @@ type Option 'a = Some { 'a }
                | None
 ```
 
+<!--
 ### Higher-kinded types
 
 A kind describes the "signature" of a type when viewed as a type function.
@@ -94,6 +97,7 @@ Functor : (T -> T) -> T -> Trait
 The `Functor` higher-kinded type(class) conceptually mirrors the `map` function but for types.
 
 No universes beyond types and kinds are supported.
+-->
 
 ## Universal quantification
 
@@ -104,8 +108,9 @@ let id : forall 'a. 'a -> 'a
        = fun x -> x
 ```
 
-`forall 'a` indicates that the type applies to any type `'a`. `forall.` can generally be omitted, however, as the quantifier is inferred.
+`forall 'a` indicates that the type applies to any type `'a`.
 
+<!--
 ### Higher-rank polymorphism
 
 Struktur's type system employs rank-2 predicative polymorphism. This means that a quantifier can occur nested to the left of at most a single function arrow.
@@ -134,3 +139,4 @@ rank0 : ()
 ## Effect system
 
 **TBD**
+-->
