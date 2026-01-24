@@ -24,6 +24,9 @@ pub trait Stage {
     /// Representation of symbols.
     type Sym: Debug + Clone;
 
+    /// Representation of names.
+    type Name: Debug + Clone + Drive;
+
     /// Representation of patterns.
     type Pattern: Debug + Clone + Drive;
 
@@ -62,6 +65,7 @@ pub struct Parse;
 
 impl Stage for Parse {
     type Sym = String;
+    type Name = ast::Name;
     type Pattern = ast::Pattern<Parse>;
     type Cases = Vec<Case<Parse>>;
     type TyAnn = Option<ast::TyExpr<Parse>>;
@@ -78,6 +82,7 @@ pub struct Sem;
 
 impl Stage for Sem {
     type Sym = Symbol;
+    type Name = Symbol;
     type Pattern = ast::Pattern<Sem>;
     type Cases = Vec<Case<Sem>>;
     type TyAnn = Option<ast::TyExpr<Sem>>;
@@ -94,6 +99,7 @@ pub struct Typed;
 
 impl Stage for Typed {
     type Sym = Symbol;
+    type Name = Symbol;
     type Pattern = patterns::Decision;
     type Cases = patterns::Cases<Expr<Typed>>;
     type TyAnn = ();

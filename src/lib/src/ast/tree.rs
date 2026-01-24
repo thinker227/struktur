@@ -21,10 +21,15 @@ struct_node! {
     items: Vec<Item<S>>
 }
 
+struct_node! {
+    Name where
+    raw name: String
+}
+
 enum_node! {
     Item<S> where
     Binding<S> as Binding {
-        raw symbol: S::Sym,
+        symbol: S::Name,
         ty: S::TyAnn,
         body: Expr<S>
     }
@@ -136,7 +141,7 @@ enum_node! {
         ret: TyExpr<S>
     },
     box ForallTyExpr<S> as Forall {
-        raw vars: Vec<S::Sym>,
+        vars: Vec<S::Name>,
         ty: TyExpr<S>
     }
 }

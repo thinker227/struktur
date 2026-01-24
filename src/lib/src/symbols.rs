@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use derivative::Derivative;
 
+use crate::ast::visit::Drive;
 use crate::id::{Id, IdProvider};
 use crate::stage::Stage;
 use crate::ast::*;
@@ -24,6 +25,12 @@ impl Symbol {
     pub fn next() -> Symbol {
         SYMBOL_PROVIDER.next()
     }
+}
+
+impl AsNode for Symbol {}
+
+impl Drive for Symbol {
+    fn drive(&self, _: &mut dyn visit::Visitor) {}
 }
 
 static SYMBOL_PROVIDER: IdProvider<Symbol> = IdProvider::new(Symbol);

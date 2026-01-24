@@ -229,6 +229,15 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
         })
     }
 
+    fn parse_name(&mut self) -> ParseResult<Name> {
+        let name = self.expect(TokenKind::Name)?;
+
+        Ok(Name {
+            data: self.node_data(name.span),
+            name: name.text.to_owned()
+        })
+    }
+
     fn parse_item(&mut self) -> ParseResult<Item<Parse>> {
         self.try_parse_item()?.ok_or_else(|| {
             let current = self.current();
@@ -251,7 +260,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
 
     fn parse_binding(&mut self) -> ParseResult<Binding<Parse>> {
         let r#let = self.expect(TokenKind::Let)?;
-        let name = self.expect(TokenKind::Name)?;
+        let name = self.parse_name()?;
 
         let ty = self.try_parse_type_ann()?;
 
@@ -265,7 +274,7 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
 
         Ok(Binding {
             data: self.node_data(span),
-            symbol: name.text.to_owned(),
+            symbol: name,
             ty,
             body
         })
@@ -736,8 +745,10 @@ impl<'src, 'tokens> Parser<'src, 'tokens> {
 
                 let mut vars = Vec::new();
                 while let Some(var) = self.advance_if(TokenKind::TypeVarName) {
-                    let name = &var.text[1..];
-                    vars.push(name.to_owned());
+                    vars.push(Name {
+                        data: self.node_data(var.span),
+                        name: var.text[1..].to_owned()
+                    });
                 }
 
                 if self.advance_if(TokenKind::Dot).is_none() {

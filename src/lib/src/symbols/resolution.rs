@@ -149,7 +149,7 @@ impl<'ast> Resolver<'ast> {
         let data = match item {
             Item::Binding(binding) => {
                 SymbolKind::Binding(BindingSymbol {
-                    name: binding.symbol.clone(),
+                    name: binding.symbol.name.clone(),
                     decl: binding.id(),
                     data: ()
                 })
@@ -229,7 +229,7 @@ impl<'ast> Resolver<'ast> {
             Expr::Var(var) => {
                 let var_symbol = self.look_up(&var.symbol, NameKind::Value)
                     .ok_or_else(|| SymbolResError::Undeclared {
-                        span: TextSpan::empty(0),
+                        span: var.span(),
                         name: var.symbol.clone(),
                         kind: "variable or binding".to_owned()
                     })?;
@@ -417,17 +417,17 @@ impl<'ast> Resolver<'ast> {
 
                         for var in &forall.vars {
                             let symbol = this.register(
-                                var.clone(),
+                                var.name.clone(),
                                 SymbolKind::TypeVar(TypeVarSymbol {
-                                    name: var.clone(),
-                                    decl: forall.id()
+                                    name: var.name.clone(),
+                                    decl: var.id()
                                 }
                             )).map_err(|prev| {
                                 let prev = this.symbols.get(prev).decl();
                                 let prev_span = this.ast.get_node(prev).span();
                                 SymbolResError::DuplicateDeclaration {
-                                    span: forall.span(),
-                                    name: var.clone(),
+                                    span: var.span(),
+                                    name: var.name.clone(),
                                     previous_declaration: prev_span,
                                     kind: "type variable".to_owned()
                                 }
