@@ -14,7 +14,7 @@
 //! let b = fun () -> a ()
 //! ```
 
-use std::{collections::HashMap, error::Error};
+use std::{collections::{HashMap, VecDeque}, error::Error};
 
 use crate::{ast::{Ast, Binding, Expr, Item, ToNodeData}, stage::Sem, symbols::{Symbol, SymbolKind}, text_span::TextSpan};
 use miette::{LabeledSpan, Severity};
@@ -86,27 +86,56 @@ pub fn check_cycles(ast: &Ast<Sem>) -> CycleResult<()> {
     Ok(())
 }
 
-fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, TextSpan> {
+fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
     let items = &ast.root().items;
 
-    let mut refs = HashMap::new();
+    let mut graph = DiGraph::new();
+
+    let mut bindings = HashMap::new();
     for item in items {
         match item {
             Item::Binding(binding) => {
                 let rs = trace_binding(binding);
-                refs.insert(binding.symbol, rs);
+                let node = graph.add_node(binding.symbol);
+                bindings.insert(binding.symbol, (rs, node));
             }
         }
     }
 
-    let mut graph = DiGraph::new();
+    let mut visit = VecDeque::new();
+    for item in items {
+        let Item::Binding(binding) = item;
 
-    todo!();
+        let (binding_refs, binding_node) = bindings.get(&binding.symbol).unwrap();
+        visit.extend(binding_refs);
+
+        while let Some(r) = visit.pop_front() {
+            match r {
+                Ref::Use(var) => {
+                    if let Some((_, var_node)) = bindings.get(var) {
+                        graph.add_edge(*binding_node, *var_node, ());
+                    }
+                }
+
+                Ref::Transitive(var) => {
+                    if let Some((var_refs, var_node)) = bindings.get(var) {
+                        graph.add_edge(*binding_node, *var_node, ());
+                        visit.extend(var_refs);
+                    }
+                }
+
+                Ref::Deferred(_) => {}
+            }
+        }
+
+        visit.clear();
+    }
 
     graph
 }
 
 /// A symbol or set of symbols referenced by an expression.
+#[derive(Debug, Clone)]
 enum Ref {
     /// A reference to a symbol which is plainly used as a value.
     Use(Symbol),
@@ -181,8 +210,7 @@ fn trace_expr(expr: &Expr<Sem>, ctx: Context, refs: &mut Vec<Ref>) {
 
             for r in sub {
                 match r {
-                    Ref::Use(_) => refs.push(r),
-                    Ref::Transitive(_) => refs.push(r),
+                    Ref::Use(_) | Ref::Transitive(_) => refs.push(r),
                     Ref::Deferred(rs) => refs.extend(rs),
                 }
             }
