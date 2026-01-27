@@ -1,7 +1,7 @@
 - [x] Parser
 - [x] Symbol resolution
   - [ ] Typed symbol IDs
-  - [ ] Top-level binding reference graph
+  - [x] Top-level binding reference graph
 - [x] Type-checking + inference
   - [x] Bidirectional inference
   - [ ] Constraint-based inference
