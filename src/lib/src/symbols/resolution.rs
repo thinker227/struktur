@@ -1,6 +1,9 @@
 use std::collections::hash_map::HashMap;
 
 use crate::{ast::*, stage::{Parse, Sem}, symbols::{BindingSymbol, Symbol, SymbolKind, Symbols, TypeVarSymbol, VariableSymbol}, text_span::TextSpan};
+use self::cycles::{CycleError, check_cycles};
+
+mod cycles;
 
 /// Resolves all the symbols of an AST.
 pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
@@ -9,7 +12,11 @@ pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
     let sem_root = resolver.root(ast.root())?;
     let symbols = resolver.symbols;
 
-    Ok(Ast::new(sem_root, symbols))
+    let ast = Ast::new(sem_root, symbols);
+
+    check_cycles(&ast)?;
+
+    Ok(ast)
 }
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
@@ -31,6 +38,10 @@ pub enum SymbolResError {
         name: String,
         kind: String,
     },
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Cycle(#[from] CycleError),
 }
 
 type SymResult<T> = Result<T, SymbolResError>;
