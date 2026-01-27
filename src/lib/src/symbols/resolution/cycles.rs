@@ -13,25 +13,34 @@
 //! This makes `let x = y` and `let x = f (fun _ -> y)` both a usage of `y`,
 //! but `let x = fun _ -> y` is not.
 
-use std::{collections::HashMap, error::Error, mem};
+use std::{cmp::Ordering, collections::HashMap, error::Error, mem};
 
-use crate::{ast::{Application, Ast, Binding, Item, Lambda, ToNodeData, VarExpr, visit::{Drive, VisitT, Visitor}}, stage::Sem, symbols::{Symbol, SymbolKind}, text_span::TextSpan, visit};
+use crate::{ast::{Application, Ast, Binding, Item, Lambda, ToNodeData, VarExpr, visit::{Drive, VisitT, Visitor}}, stage::Sem, symbols::{BindingSymbol, Symbol, SymbolKind}, text_span::TextSpan, visit};
+use itertools::Itertools;
 use miette::{LabeledSpan, Severity};
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex}};
 
 #[derive(Debug)]
-pub struct CycleError {
-    bindings: Vec<(String, TextSpan)>,
+pub struct Cycle {
+    bindings: Vec<Ref>,
 }
 
-impl std::fmt::Display for CycleError {
+#[derive(Debug)]
+struct Ref {
+    binding_name: String,
+    binding_span: TextSpan,
+    ref_name: String,
+    ref_span: TextSpan,
+}
+
+impl std::fmt::Display for Cycle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Cycle detected between top-level bindings ")?;
+        write!(f, "Reference cycle detected between top-level bindings ")?;
 
-        let (first, _) = &self.bindings[0];
-        write!(f, "`{first}`")?;
+        let Ref { binding_name: last, .. } = &self.bindings.last().unwrap();
+        write!(f, "`{last}`")?;
 
-        for (name, _) in self.bindings.iter().rev() {
+        for Ref { binding_name: name, .. } in &self.bindings {
             write!(f, " -> `{name}`")?;
         }
 
@@ -39,53 +48,136 @@ impl std::fmt::Display for CycleError {
     }
 }
 
-impl Error for CycleError {}
+impl Error for Cycle {}
 
-impl miette::Diagnostic for CycleError {
+impl miette::Diagnostic for Cycle {
     fn severity(&self) -> Option<miette::Severity> {
         Some(Severity::Error)
     }
 
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new("Top-level bindings have to have a definite evaluation order, and can therefore not contain cyclic dependencies between each other"))
+    }
+
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let labels = self.bindings.iter()
-            .map(|(_, span)| LabeledSpan::underline(*span));
+            .flat_map(|r| [
+                LabeledSpan::underline(r.binding_span),
+                LabeledSpan::new_with_span(
+                    Some(format!("`{}` references `{}` here", r.binding_name, r.ref_name)),
+                    r.ref_span
+                )
+            ]);
 
         Some(Box::new(labels))
     }
 }
 
-type CycleResult<T> = Result<T, CycleError>;
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+pub enum CycleError {
+    #[error("Top-level binding `{name}` is self-referential")]
+    SelfReference {
+        #[label]
+        span: TextSpan,
+        #[label("`{}` references itself here", name)]
+        ref_span: TextSpan,
+        name: String,
+    },
 
-pub fn check_cycles(ast: &Ast<Sem>) -> CycleResult<()> {
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Cycle(#[from] Cycle),
+}
+
+pub fn check_cycles(ast: &Ast<Sem>) -> Result<(), CycleError> {
     let references = reference_graph(ast);
     let scc = tarjan_scc(&references);
 
+    let check = Check {
+        references: &references,
+        ast
+    };
+
     for group in scc {
-        if group.len() <= 1 {
-            continue;
-        }
-
-        let bindings = group.iter().map(|index| {
-            let symbol = *references.node_weight(*index).unwrap();
-            let symbol = match ast.symbols().get(symbol) {
-                SymbolKind::Binding(binding) => binding,
-                _ => unreachable!()
-            };
-
-            let binding = ast.get_node_as::<Binding<Sem>>(symbol.decl).unwrap();
-
-            (symbol.name.clone(), binding.span())
-        });
-
-        return Err(CycleError {
-            bindings: bindings.collect()
-        });
+        check.check_group(group)?;
     }
 
     Ok(())
 }
 
-fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
+struct Check<'a> {
+    references: &'a DiGraph<Symbol, TextSpan>,
+    ast: &'a Ast<Sem>,
+}
+
+impl Check<'_> {
+    fn get_binding(&self, index: NodeIndex) -> (&BindingSymbol<Sem>, &Binding<Sem>) {
+        let symbol = *self.references.node_weight(index).unwrap();
+        let symbol = match self.ast.symbols().get(symbol) {
+            SymbolKind::Binding(binding) => binding,
+            _ => unreachable!()
+        };
+
+        let binding = self.ast.get_node_as::<Binding<Sem>>(symbol.decl).unwrap();
+
+        (symbol, binding)
+    }
+
+    fn check_group(&self, mut group: Vec<NodeIndex>) -> Result<(), CycleError> {
+        // Both self-referential and non-self-referential singular graph nodes
+        // are their own strongly connected component, so if the group only contains a single node,
+        // we have to manually check if it contains a self-reference. As a consolation prize,
+        // though, we can at least report a more descriptive error for self-referential bindings.
+        if let [index] = group.as_slice() {
+            // if references.contains_edge(*index, *index) {
+            if let Some(edge) = self.references.edges_connecting(*index, *index).next() {
+                let (symbol, binding) = self.get_binding(*index);
+
+                // TODO: Mega super hack until name spans are preserved after symbol resolution.
+                let binding_span = TextSpan::new(binding.span().offset() + 4, symbol.name.len());
+
+                return Err(CycleError::SelfReference {
+                    span: binding_span,
+                    ref_span: *edge.weight(),
+                    name: symbol.name.clone()
+                });
+            } else {
+                return Ok(());
+            }
+        }
+
+        // Sort the group so that the nodes are in the order of the cycle.
+        group.sort_by(|a, b|
+            if self.references.contains_edge(*a, *b) { Ordering::Less } else { Ordering::Greater }
+        );
+
+        let bindings = group.iter()
+            .circular_tuple_windows::<(_, _)>()
+            .map(|(index, next)| {
+                let (symbol, binding) = self.get_binding(*index);
+                let (next_symbol, _) = self.get_binding(*next);
+
+                let edge = self.references.edges_connecting(*index, *next).next().unwrap();
+                let ref_span = *edge.weight();
+
+                // TODO: Mega super hack until name spans are preserved after symbol resolution.
+                let binding_span = TextSpan::new(binding.span().offset() + 4, symbol.name.len());
+
+                Ref {
+                    binding_name: symbol.name.clone(),
+                    binding_span,
+                    ref_name: next_symbol.name.clone(),
+                    ref_span
+                }
+            });
+
+        Err(CycleError::Cycle(Cycle {
+            bindings: bindings.collect()
+        }))
+    }
+}
+
+fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, TextSpan> {
     let mut graph = DiGraph::new();
     let mut bindings = HashMap::new();
 
@@ -115,7 +207,7 @@ fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
 }
 
 struct MakeGraph<'a> {
-    graph: &'a mut DiGraph<Symbol, ()>,
+    graph: &'a mut DiGraph<Symbol, TextSpan>,
     bindings: &'a HashMap<Symbol, NodeIndex>,
     binding_node: NodeIndex,
     in_app: bool,
@@ -132,7 +224,7 @@ impl<'a> Visitor for MakeGraph<'a> {
 impl VisitT<VarExpr<Sem>> for MakeGraph<'_> {
     fn visit_t(&mut self, item: &VarExpr<Sem>) {
         if let Some(var_node) = self.bindings.get(&item.symbol) {
-            self.graph.add_edge(self.binding_node, *var_node, ());
+            self.graph.add_edge(self.binding_node, *var_node, item.span());
         }
     }
 }
