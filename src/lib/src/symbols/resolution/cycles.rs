@@ -89,6 +89,7 @@ pub enum CycleError {
     Cycle(#[from] Cycle),
 }
 
+/// Ensures that there are no cyclic dependencies between top-level bindings.
 pub fn check_cycles(ast: &Ast<Sem>) -> Result<(), CycleError> {
     let references = reference_graph(ast);
     let scc = tarjan_scc(&references);
