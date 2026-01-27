@@ -1,24 +1,23 @@
 //! Reference cycle detection.
 //!
 //! Since Struktur is strictly evaluated, reference cycles between top-level bindings are not allowed.
-//! ```ocaml
+//! ```
 //! let a = b
 //! let b = a
 //! ```
-//! This is handled by building a graph of the references between bindings
-//! and checking it for cycles. This would be simple if it wasn't for the fact that cyclic references
-//! deferred by lambdas *are* allowed, so we need a specialized algorithm for building the graph
-//! in order to handle this.
-//! ```ocaml
-//! let a = fun () -> b ()
-//! let b = fun () -> a ()
-//! ```
+//! This is handled by building a graph of the references between bindings and checking it for cycles.
+//!
+//! The rules for how said graph is built are a compromise between generality and ease of implementation;
+//! a reference is considered "reachable" or "used" if it's not nested within any lambdas,
+//! or is nested within any level of function application.
+//! This makes `let x = y` and `let x = f (fun _ -> y)` both a usage of `y`,
+//! but `let x = fun _ -> y` is not.
 
-use std::{collections::{HashMap, VecDeque}, error::Error};
+use std::{collections::HashMap, error::Error, mem};
 
-use crate::{ast::{Ast, Binding, Expr, Item, ToNodeData}, stage::Sem, symbols::{Symbol, SymbolKind}, text_span::TextSpan};
+use crate::{ast::{Application, Ast, Binding, Item, Lambda, ToNodeData, VarExpr, visit::{Drive, VisitT, Visitor}}, stage::Sem, symbols::{Symbol, SymbolKind}, text_span::TextSpan, visit};
 use miette::{LabeledSpan, Severity};
-use petgraph::{algo::tarjan_scc, graph::DiGraph};
+use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex}};
 
 #[derive(Debug)]
 pub struct CycleError {
@@ -87,148 +86,69 @@ pub fn check_cycles(ast: &Ast<Sem>) -> CycleResult<()> {
 }
 
 fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
-    let items = &ast.root().items;
-
     let mut graph = DiGraph::new();
-
     let mut bindings = HashMap::new();
-    for item in items {
+
+    for item in &ast.root().items {
         match item {
             Item::Binding(binding) => {
-                let rs = trace_binding(binding);
-                let node = graph.add_node(binding.symbol);
-                bindings.insert(binding.symbol, (rs, node));
+                bindings.insert(binding.symbol, graph.add_node(binding.symbol));
             }
         }
     }
 
-    let mut visit = VecDeque::new();
-    for item in items {
-        let Item::Binding(binding) = item;
-
-        let (binding_refs, binding_node) = bindings.get(&binding.symbol).unwrap();
-        visit.extend(binding_refs);
-
-        while let Some(r) = visit.pop_front() {
-            match r {
-                Ref::Use(var) => {
-                    if let Some((_, var_node)) = bindings.get(var) {
-                        graph.add_edge(*binding_node, *var_node, ());
-                    }
-                }
-
-                Ref::Transitive(var) => {
-                    if let Some((var_refs, var_node)) = bindings.get(var) {
-                        graph.add_edge(*binding_node, *var_node, ());
-                        visit.extend(var_refs);
-                    }
-                }
-
-                Ref::Deferred(_) => {}
+    for item in &ast.root().items {
+        match item {
+            Item::Binding(binding) => {
+                let mut make = MakeGraph {
+                    graph: &mut graph,
+                    bindings: &bindings,
+                    binding_node: *bindings.get(&binding.symbol).unwrap(),
+                    in_app: false
+                };
+                make.visit(binding);
             }
         }
-
-        visit.clear();
     }
 
     graph
 }
 
-/// A symbol or set of symbols referenced by an expression.
-#[derive(Debug, Clone)]
-enum Ref {
-    /// A reference to a symbol which is plainly used as a value.
-    Use(Symbol),
-    /// A reference to a symbol and all of its references.
-    Transitive(Symbol),
-    /// A set of references which are only relevant if invoked.
-    Deferred(Vec<Ref>),
+struct MakeGraph<'a> {
+    graph: &'a mut DiGraph<Symbol, ()>,
+    bindings: &'a HashMap<Symbol, NodeIndex>,
+    binding_node: NodeIndex,
+    in_app: bool,
 }
 
-/// Signifies the context in which an expression is used.
-#[derive(Debug, Clone, Copy)]
-enum Context {
-    /// The expression's value will be used (for instance as the value of a binding).
-    Use,
-    /// The expression's value will be invoked.
-    Invoke,
+impl<'a> Visitor for MakeGraph<'a> {
+    fn visit(&mut self, item: &dyn Drive) {
+        visit!(self, item; VarExpr<Sem>, Application<Sem>, Lambda<Sem>);
+    }
 }
 
-/// Traces the references of a binding.
-fn trace_binding(binding: &Binding<Sem>) -> Vec<Ref> {
-    let mut refs = Vec::new();
-    trace_expr(&binding.body, Context::Use, &mut refs);
-    refs
+// See module docs for what these rules are.
+
+impl VisitT<VarExpr<Sem>> for MakeGraph<'_> {
+    fn visit_t(&mut self, item: &VarExpr<Sem>) {
+        if let Some(var_node) = self.bindings.get(&item.symbol) {
+            self.graph.add_edge(self.binding_node, *var_node, ());
+        }
+    }
 }
 
-/// Traces the references of an expression.
-fn trace_expr(expr: &Expr<Sem>, ctx: Context, refs: &mut Vec<Ref>) {
-    match expr {
-        Expr::Unit(_)
-        | Expr::Int(_)
-        | Expr::Bool(_)
-        | Expr::String(_)
-        => {}
+impl VisitT<Application<Sem>> for MakeGraph<'_> {
+    fn visit_t(&mut self, item: &Application<Sem>) {
+        let prev = mem::replace(&mut self.in_app, true);
+        item.drive(self);
+        self.in_app = prev;
+    }
+}
 
-        Expr::Var(var) => {
-            // If the current context is that of invoking the variable,
-            // then all of the variable's references are also references
-            // of this expression. Otherwise it's just a normal usage.
-            refs.push(match ctx {
-                Context::Use => Ref::Use(var.symbol),
-                Context::Invoke => Ref::Transitive(var.symbol),
-            });
-        }
-
-        Expr::Bind(binding) => {
-            // Invocation only cascades to the sub-expression of a binding,
-            // the value is just *used*.
-            trace_expr(&binding.value, Context::Use, refs);
-            trace_expr(&binding.expr, ctx, refs);
-        }
-
-        Expr::Lambda(lambda) => {
-            // The references within lambdas are only relevant if the lambda is invoked.
-            // Therefore we collect them into a separate list and put them into a `Deferred` reference.
-            let mut sub = Vec::new();
-            for case in &lambda.cases {
-                trace_expr(&case.body, Context::Use, &mut sub);
-            }
-
-            refs.push(Ref::Deferred(sub));
-        }
-
-        Expr::Apply(application) => {
-            // This is the crux of this algorithm for reference tracing.
-            // If we encounter an application, then all of the deferred references
-            // of the target expression are relevant to this expression as well.
-            // That is to say, if a lambda (which produces deferred references)
-            // is invoked, then we are interested in those deferred references.
-
-            let mut sub = Vec::new();
-            trace_expr(&application.target, Context::Invoke, &mut sub);
-
-            for r in sub {
-                match r {
-                    Ref::Use(_) | Ref::Transitive(_) => refs.push(r),
-                    Ref::Deferred(rs) => refs.extend(rs),
-                }
-            }
-
-            trace_expr(&application.arg, Context::Use, refs);
-        }
-
-        Expr::If(if_else) => {
-            // Similarly to let-expressions, invocation only cascades to the
-            // branch expressions of if-expressions, the condition is just *used*.
-            trace_expr(&if_else.condition, Context::Use, refs);
-            trace_expr(&if_else.if_true, ctx, refs);
-            trace_expr(&if_else.if_false, ctx, refs);
-        }
-
-        Expr::TyAnn(tyann) => {
-            // Type annotations are transparent.
-            trace_expr(&tyann.expr, ctx, refs);
+impl VisitT<Lambda<Sem>> for MakeGraph<'_> {
+    fn visit_t(&mut self, item: &Lambda<Sem>) {
+        if self.in_app {
+            item.drive(self);
         }
     }
 }
