@@ -105,8 +105,10 @@ pub fn check_cycles(ast: &Ast<Sem>) -> Result<(), CycleError> {
     Ok(())
 }
 
+type ReferenceGraph = DiGraph<Symbol, TextSpan>;
+
 struct Check<'a> {
-    references: &'a DiGraph<Symbol, TextSpan>,
+    references: &'a ReferenceGraph,
     ast: &'a Ast<Sem>,
 }
 
@@ -177,7 +179,7 @@ impl Check<'_> {
     }
 }
 
-fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, TextSpan> {
+fn reference_graph(ast: &Ast<Sem>) -> ReferenceGraph {
     let mut graph = DiGraph::new();
     let mut bindings = HashMap::new();
 
@@ -207,7 +209,7 @@ fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, TextSpan> {
 }
 
 struct MakeGraph<'a> {
-    graph: &'a mut DiGraph<Symbol, TextSpan>,
+    graph: &'a mut ReferenceGraph,
     bindings: &'a HashMap<Symbol, NodeIndex>,
     binding_node: NodeIndex,
     in_app: bool,
