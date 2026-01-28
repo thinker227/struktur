@@ -1,45 +1,69 @@
 //! Abstract syntax tree and nodes.
 
-mod container;
 mod tree;
 pub mod visit;
 
-use std::any::Any;
+use std::{any::Any, cell::OnceCell, collections::HashMap};
 
-use derivative::Derivative;
-use crate::{ast::{container::RootContainer, visit::Drive}, id::Id, stage::Stage, text_span::TextSpan};
+use ouroboros::self_referencing;
+use crate::{ast::visit::Drive, id::Id, stage::Stage, text_span::TextSpan};
 
 pub use self::tree::*;
 
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""))]
-pub struct Ast<S: Stage> {
-    container: RootContainer<S>,
+pub struct Ast<S: Stage + 'static> {
+    inner: Inner<S>,
     symbols: S::Syms,
+}
+
+#[self_referencing]
+struct Inner<S: Stage + 'static> {
+    root: Root<S>,
+    #[borrows(root)]
+    #[not_covariant]
+    nodes: OnceCell<HashMap<NodeId, &'this dyn Node>>,
 }
 
 impl<S: Stage + 'static> Ast<S> {
     pub fn new(root: Root<S>, symbols: S::Syms) -> Self {
+        // let make_nodes = |root| {
+        //     todo!()
+        // };
+
         Self {
-            container: RootContainer::new(root),
+            inner: Inner::new(root, |_| OnceCell::new()),
             symbols
         }
     }
 
     pub fn root(&self) -> &Root<S> {
-        self.container.root()
+        self.inner.borrow_root()
     }
 
     pub fn symbols(&self) -> &S::Syms {
         &self.symbols
     }
 
-    pub fn get_node(&self, id: NodeId) -> &dyn Node {
-        self.container.get_node(id)
-    }
-
     pub fn get_node_as<N: Node>(&self, id: NodeId) -> Option<&N> {
         (self.get_node(id) as &dyn Any).downcast_ref()
+    }
+
+    pub fn get_node(&self, id: NodeId) -> &&dyn Node {
+        self.inner.with(|borrow| {
+            let map = borrow.nodes.get_or_init(|| Self::build_nodes(borrow.root));
+            map.get(&id).unwrap()
+        })
+    }
+
+    fn build_nodes(root: &Root<S>) -> HashMap<NodeId, &dyn Node> {
+        todo!()
+    }
+}
+
+impl<S: Stage + 'static> std::fmt::Debug for Ast<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ast")
+            .field("root", self.inner.borrow_root())
+            .field("symbols", &self.symbols).finish()
     }
 }
 
