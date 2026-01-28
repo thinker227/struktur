@@ -1,9 +1,9 @@
 use std::collections::hash_map::HashMap;
 
 use crate::{ast::*, stage::{Parse, Sem}, symbols::{BindingSymbol, Symbol, SymbolKind, Symbols, TypeVarSymbol, VariableSymbol}, text_span::TextSpan};
-use self::cycles::{CycleError, check_cycles};
+use self::ref_graph::{CycleError, check_cycles};
 
-mod cycles;
+mod ref_graph;
 
 /// Resolves all the symbols of an AST.
 pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
