@@ -1,7 +1,7 @@
 use std::collections::hash_map::HashMap;
 
 use crate::{ast::*, stage::{Parse, Sem}, symbols::{BindingSymbol, Symbol, SymbolKind, Symbols, TypeVarSymbol, VariableSymbol}, text_span::TextSpan};
-use self::ref_graph::{CycleError, check_cycles};
+use self::ref_graph::{CycleError, build_ref_graph};
 
 mod ref_graph;
 
@@ -14,7 +14,8 @@ pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
 
     let ast = Ast::new(sem_root, symbols);
 
-    check_cycles(&ast)?;
+    // TODO: Store the reference graph in the AST.
+    let _ref_graph = build_ref_graph(&ast)?;
 
     Ok(ast)
 }

@@ -89,8 +89,9 @@ pub enum CycleError {
     Cycle(#[from] Cycle),
 }
 
-/// Ensures that there are no cyclic dependencies between top-level bindings.
-pub fn check_cycles(ast: &Ast<Sem>) -> Result<(), CycleError> {
+/// Builds the reference graph between top-level bindings of an AST.
+/// Additionally ensures that there are no cyclic dependencies between top-level bindings.
+pub fn build_ref_graph(ast: &Ast<Sem>) -> Result<DiGraph<Symbol, ()>, CycleError> {
     let references = reference_graph(ast);
     let scc = tarjan_scc(&references);
 
@@ -103,7 +104,8 @@ pub fn check_cycles(ast: &Ast<Sem>) -> Result<(), CycleError> {
         check.check_group(group)?;
     }
 
-    Ok(())
+    // There's no real need to retain the span of references in the returned graph.
+    Ok(references.map_owned(|_, binding| binding, |_, _| ()))
 }
 
 type ReferenceGraph = DiGraph<Symbol, TextSpan>;
