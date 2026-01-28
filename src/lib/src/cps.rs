@@ -5,7 +5,7 @@
 //! and which eventually terminates in a call to either a [Continuation] or some other function.
 //! Importantly, functions in CPS do not return values, they only pass values forward to other functions.
 
-use std::collections::HashMap;
+use petgraph::algo::toposort;
 
 use crate::{ast, id::{Id, IdProvider}, patterns::{self, Constructor, Decision}, stage::Typed, symbols::Symbol};
 
@@ -332,18 +332,30 @@ fn t(expr: &ast::Expr<Typed>, cont: ConversionContinuation) -> Complex {
 /// Contains all info returned by transforming an AST into CPS.
 #[derive(Debug, Clone)]
 pub struct Cps {
-    pub bindings: HashMap<Symbol, Binding>,
+    pub bindings: Vec<Binding>,
 }
 
 /// Transforms an AST into CPS representation.
 pub fn transform_cps(ast: &ast::Ast<Typed>) -> Cps {
-    let mut bindings = HashMap::new();
-    for item in &ast.root().items {
-        let ast::Item::Binding(binding) = item;
+    let mut bindings = Vec::new();
 
+    // Ensure that bindings are ordered according to their reference dependencies
+    // so that bindings that later bindings depend on will be emitted first.
+
+    let sorted = toposort(ast.ref_graph(), None)
+        .expect("binding reference graph should not have cycles");
+
+    // TODO: This is kinda ugly, maybe put this in a helper in the AST or something.
+    let order = sorted.iter()
+        .map(|index| ast.ref_graph().node_weight(*index).unwrap())
+        .map(|symbol| ast.symbols().get(*symbol))
+        .map(|symbol| ast.get_node_as::<ast::Binding<Typed>>(symbol.decl()).unwrap())
+        .rev();
+
+    for binding in order {
         let symbol = binding.symbol;
 
-        bindings.insert(symbol, Binding {
+        bindings.push(Binding {
             symbol,
             value: t(&binding.body, ConversionContinuation::Assign)
         });

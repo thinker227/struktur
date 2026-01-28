@@ -169,7 +169,7 @@ pub fn emit(cps: &Cps) -> String {
     let mut codegen = Codegen::new();
     codegen.header().unwrap();
 
-    for binding in cps.bindings.values() {
+    for binding in &cps.bindings {
         codegen.binding(binding).unwrap();
     }
 
