@@ -15,7 +15,7 @@
 
 use std::{cmp::Ordering, collections::HashMap, error::Error, mem};
 
-use crate::{ast::{Application, Ast, Binding, Item, Lambda, ToNodeData, VarExpr, visit::{Drive, VisitT, Visitor}}, stage::Sem, symbols::{BindingSymbol, Symbol, SymbolKind}, text_span::TextSpan, visit};
+use crate::{ast::{Application, Binding, Forest, Item, Lambda, Root, ToNodeData, VarExpr, visit::{Drive, VisitT, Visitor}}, stage::Sem, symbols::{BindingSymbol, Symbol, SymbolKind, Symbols}, text_span::TextSpan, visit};
 use itertools::Itertools;
 use miette::{LabeledSpan, Severity};
 use petgraph::{algo::tarjan_scc, graph::{DiGraph, NodeIndex}};
@@ -89,15 +89,19 @@ pub enum CycleError {
     Cycle(#[from] Cycle),
 }
 
+/// A graph of references between top-level bindings.
+pub type RefGraph = DiGraph<Symbol, ()>;
+
 /// Builds the reference graph between top-level bindings of an AST.
 /// Additionally ensures that there are no cyclic dependencies between top-level bindings.
-pub fn build_ref_graph(ast: &Ast<Sem>) -> Result<DiGraph<Symbol, ()>, CycleError> {
-    let references = reference_graph(ast);
+pub fn build_ref_graph(symbols: &Symbols<Sem>, forest: &Forest<Sem>) -> Result<RefGraph, CycleError> {
+    let references = reference_graph(forest.root());
     let scc = tarjan_scc(&references);
 
     let check = Check {
         references: &references,
-        ast
+        symbols,
+        forest
     };
 
     for group in scc {
@@ -108,22 +112,23 @@ pub fn build_ref_graph(ast: &Ast<Sem>) -> Result<DiGraph<Symbol, ()>, CycleError
     Ok(references.map_owned(|_, binding| binding, |_, _| ()))
 }
 
-type ReferenceGraph = DiGraph<Symbol, TextSpan>;
+type InnerRefGraph = DiGraph<Symbol, TextSpan>;
 
 struct Check<'a> {
-    references: &'a ReferenceGraph,
-    ast: &'a Ast<Sem>,
+    references: &'a InnerRefGraph,
+    symbols: &'a Symbols<Sem>,
+    forest: &'a Forest<Sem>,
 }
 
 impl Check<'_> {
     fn get_binding(&self, index: NodeIndex) -> (&BindingSymbol<Sem>, &Binding<Sem>) {
         let symbol = *self.references.node_weight(index).unwrap();
-        let symbol = match self.ast.symbols().get(symbol) {
+        let symbol = match self.symbols.get(symbol) {
             SymbolKind::Binding(binding) => binding,
             _ => unreachable!()
         };
 
-        let binding = self.ast.get_node_as::<Binding<Sem>>(symbol.decl).unwrap();
+        let binding = self.forest.get_node_as::<Binding<Sem>>(symbol.decl).unwrap();
 
         (symbol, binding)
     }
@@ -182,11 +187,11 @@ impl Check<'_> {
     }
 }
 
-fn reference_graph(ast: &Ast<Sem>) -> ReferenceGraph {
+fn reference_graph(root: &Root<Sem>) -> InnerRefGraph {
     let mut graph = DiGraph::new();
     let mut bindings = HashMap::new();
 
-    for item in &ast.root().items {
+    for item in &root.items {
         match item {
             Item::Binding(binding) => {
                 bindings.insert(binding.symbol, graph.add_node(binding.symbol));
@@ -194,7 +199,7 @@ fn reference_graph(ast: &Ast<Sem>) -> ReferenceGraph {
         }
     }
 
-    for item in &ast.root().items {
+    for item in &root.items {
         match item {
             Item::Binding(binding) => {
                 let mut make = MakeGraph {
@@ -212,7 +217,7 @@ fn reference_graph(ast: &Ast<Sem>) -> ReferenceGraph {
 }
 
 struct MakeGraph<'a> {
-    graph: &'a mut ReferenceGraph,
+    graph: &'a mut InnerRefGraph,
     bindings: &'a HashMap<Symbol, NodeIndex>,
     binding_node: NodeIndex,
     in_app: bool,

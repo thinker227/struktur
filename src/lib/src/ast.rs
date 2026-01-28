@@ -17,13 +17,19 @@ pub use self::forest::Forest;
 pub struct Ast<S: Stage> {
     forest: Forest<S>,
     symbols: S::Syms,
+    ref_graph: S::RefGraph,
 }
 
 impl<S: Stage + 'static> Ast<S> {
-    pub fn new(root: Root<S>, symbols: S::Syms) -> Self {
+    pub fn new(root: Root<S>, symbols: S::Syms, ref_graph: S::RefGraph) -> Self {
+        Self::new_with_forest(Forest::new(root), symbols, ref_graph)
+    }
+
+    pub fn new_with_forest(forest: Forest<S>, symbols: S::Syms, ref_graph: S::RefGraph) -> Self {
         Self {
-            forest: Forest::new(root),
-            symbols
+            forest,
+            symbols,
+            ref_graph
         }
     }
 
@@ -33,6 +39,10 @@ impl<S: Stage + 'static> Ast<S> {
 
     pub fn symbols(&self) -> &S::Syms {
         &self.symbols
+    }
+
+    pub fn ref_graph(&self) -> &S::RefGraph {
+        &self.ref_graph
     }
 
     pub fn get_node(&self, id: NodeId) -> &dyn Node {

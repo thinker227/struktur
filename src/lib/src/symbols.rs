@@ -13,7 +13,7 @@ use crate::id::{Id, IdProvider};
 use crate::stage::Stage;
 use crate::ast::*;
 
-pub use resolution::{SymbolResError, resolve_symbols};
+pub use resolution::{SymbolResError, resolve_symbols, RefGraph};
 
 /// A reference to a symbol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -1132,7 +1132,7 @@ impl Embedder {
         let typed_symbols = ast.symbols()
             .map(|symbol, data| self.symbol(symbol, data));
 
-        Ast::new(typed_root, typed_symbols)
+        Ast::new(typed_root, typed_symbols, ast.ref_graph().clone())
     }
 
     fn symbol(&self, symbol: Symbol, data: &SymbolKind<Sem>) -> SymbolKind<Typed> {

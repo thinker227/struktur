@@ -801,7 +801,7 @@ pub fn parse(source: &str) -> Result<Ast<Parse>, ParseError> {
     let mut parser = Parser::new(&lexed.tokens, lexed.eoi);
     let root = parser.parse_root()?;
 
-    Ok(Ast::new(root, ()))
+    Ok(Ast::new(root, (), ()))
 }
 
 #[cfg(test)]

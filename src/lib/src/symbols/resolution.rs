@@ -3,19 +3,21 @@ use std::collections::hash_map::HashMap;
 use crate::{ast::*, stage::{Parse, Sem}, symbols::{BindingSymbol, Symbol, SymbolKind, Symbols, TypeVarSymbol, VariableSymbol}, text_span::TextSpan};
 use self::ref_graph::{CycleError, build_ref_graph};
 
+pub use self::ref_graph::RefGraph;
+
 mod ref_graph;
 
 /// Resolves all the symbols of an AST.
 pub fn resolve_symbols(ast: &Ast<Parse>) -> Result<Ast<Sem>, SymbolResError> {
     let mut resolver = Resolver::new(ast);
-
     let sem_root = resolver.root(ast.root())?;
+
+    let forest = Forest::new(sem_root);
     let symbols = resolver.symbols;
 
-    let ast = Ast::new(sem_root, symbols);
+    let ref_graph = build_ref_graph(&symbols, &forest)?;
 
-    // TODO: Store the reference graph in the AST.
-    let _ref_graph = build_ref_graph(&ast)?;
+    let ast = Ast::new_with_forest(forest, symbols, ref_graph);
 
     Ok(ast)
 }

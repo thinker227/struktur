@@ -17,7 +17,7 @@
 
 use std::fmt::Debug;
 
-use crate::{ast::{self, Case, Expr, ToNodeData, visit::Drive}, patterns, symbols::{Symbol, Symbols}, types::{TypedBindingData, TypedExprData, TypedVariableData}};
+use crate::{ast::{self, Case, Expr, ToNodeData, visit::Drive}, patterns, symbols::{RefGraph, Symbol, Symbols}, types::{TypedBindingData, TypedExprData, TypedVariableData}};
 
 /// The compilation stage of an AST.
 pub trait Stage {
@@ -48,6 +48,9 @@ pub trait Stage {
     /// Global collection of symbols.
     type Syms: Debug;
 
+    /// Reference graph of top-level bindings.
+    type RefGraph: Debug;
+
     /// Additional data for expressions.
     type ExprData: Debug + Clone;
 
@@ -72,6 +75,7 @@ impl Stage for Parse {
     type TyAnnExpr = ast::TyAnnExpr<Parse>;
     type TyAnnPattern = ast::TyAnnPattern<Parse>;
     type Syms = ();
+    type RefGraph = ();
     type ExprData = ();
     type VarData = !;
     type BindingData = !;
@@ -89,6 +93,7 @@ impl Stage for Sem {
     type TyAnnExpr = ast::TyAnnExpr<Sem>;
     type TyAnnPattern = ast::TyAnnPattern<Sem>;
     type Syms = Symbols<Sem>;
+    type RefGraph = RefGraph;
     type ExprData = ();
     type VarData = ();
     type BindingData = ();
@@ -106,6 +111,7 @@ impl Stage for Typed {
     type TyAnnExpr = !;
     type TyAnnPattern = !;
     type Syms = Symbols<Typed>;
+    type RefGraph = RefGraph;
     type ExprData = TypedExprData;
     type VarData = TypedVariableData;
     type BindingData = TypedBindingData;
