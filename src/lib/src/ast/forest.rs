@@ -1,4 +1,4 @@
-use std::{cell::OnceCell, collections::HashMap, fmt::Debug, marker::PhantomPinned, pin::Pin, ptr::NonNull, rc::Rc};
+use std::{any::Any, cell::OnceCell, collections::HashMap, fmt::Debug, marker::PhantomPinned, pin::Pin, ptr::NonNull, rc::Rc};
 
 use crate::{ast::{Node, NodeId, Root, visit::{Drive, Visitor}}, stage::Stage};
 
@@ -33,6 +33,15 @@ impl<S: Stage + 'static> Forest<S> {
     /// Gets the root of the tree.
     pub fn root(&self) -> &Root<S> {
         &self.0.root.0
+    }
+
+    /// Gets a node with a specified ID and type.
+    /// Returns [None] if the node with the specified ID is not of the specified type.
+    ///
+    /// # Panics
+    /// Panics if no node with the specified ID exists.
+    pub fn get_node_as<N: Node>(&self, id: NodeId) -> Option<&N> {
+        (self.get_node(id) as &dyn Any).downcast_ref()
     }
 
     /// Gets a node with a specified ID.
