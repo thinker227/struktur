@@ -1,33 +1,34 @@
 //! Abstract syntax tree and nodes.
 
-mod container;
+mod forest;
 mod tree;
 pub mod visit;
 
 use std::any::Any;
 
 use derivative::Derivative;
-use crate::{ast::{container::RootContainer, visit::Drive}, id::Id, stage::Stage, text_span::TextSpan};
+use crate::{ast::visit::Drive, id::Id, stage::Stage, text_span::TextSpan};
 
 pub use self::tree::*;
+pub use self::forest::Forest;
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = ""))]
 pub struct Ast<S: Stage> {
-    container: RootContainer<S>,
+    forest: Forest<S>,
     symbols: S::Syms,
 }
 
 impl<S: Stage + 'static> Ast<S> {
     pub fn new(root: Root<S>, symbols: S::Syms) -> Self {
         Self {
-            container: RootContainer::new(root),
+            forest: Forest::new(root),
             symbols
         }
     }
 
     pub fn root(&self) -> &Root<S> {
-        self.container.root()
+        self.forest.root()
     }
 
     pub fn symbols(&self) -> &S::Syms {
@@ -35,7 +36,7 @@ impl<S: Stage + 'static> Ast<S> {
     }
 
     pub fn get_node(&self, id: NodeId) -> &dyn Node {
-        self.container.get_node(id)
+        self.forest.get_node(id)
     }
 
     pub fn get_node_as<N: Node>(&self, id: NodeId) -> Option<&N> {
