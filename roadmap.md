@@ -17,6 +17,8 @@
 - [ ] Operators
 - [ ] Modules
 - [ ] REPL
+- [ ] Bytecode VM
+- [ ] Debugger
 - [x] VSCode extension/TextMate grammar
 - [ ] Rank-2 types
 - [ ] Higher-kinded types
