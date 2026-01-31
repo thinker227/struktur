@@ -11,7 +11,7 @@ use std::{fmt::Display, rc::Rc};
 use crate::{ast::*, id::IdProvider, stage::Parse, text_span::TextSpan};
 use self::lex::{Token, TokenKind, lex};
 
-#[derive(Debug, Clone, thiserror::Error, miette::Diagnostic)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error, miette::Diagnostic)]
 pub enum ParseError {
     #[error("Unknown character")]
     UnknownCharacter {
@@ -59,6 +59,13 @@ pub enum ParseError {
         #[label]
         span: TextSpan,
         name: String,
+    }
+}
+
+impl Default for ParseError {
+    fn default() -> Self {
+        // There is no "default" for parse errors, but Logos requires this impl.
+        unimplemented!()
     }
 }
 

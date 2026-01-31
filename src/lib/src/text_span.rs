@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::Range};
 
 use miette::SourceSpan;
 
@@ -57,6 +57,13 @@ impl From<TextSpan> for SourceSpan {
 impl From<SourceSpan> for TextSpan {
     fn from(value: SourceSpan) -> Self {
         Self::new(value.offset(), value.len())
+    }
+}
+
+impl From<Range<usize>> for TextSpan {
+    fn from(value: Range<usize>) -> Self {
+        Self::from_offset_end(value.start, value.end)
+            .expect("length of range cannot be negative")
     }
 }
 

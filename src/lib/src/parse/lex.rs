@@ -1,4 +1,6 @@
-use std::{fmt::Display, ops::{Add, AddAssign, ControlFlow, FromResidual, Try}};
+use std::fmt::Display;
+
+use logos::Logos;
 
 use crate::{parse::ParseError, text_span::TextSpan};
 
@@ -23,30 +25,86 @@ impl Display for Token<'_> {
     }
 }
 
+#[allow(unused, reason = "Used by Logos derive.")]
+fn unknown_token(lex: &mut logos::Lexer<TokenKind>) -> ParseError {
+    ParseError::UnknownCharacter {
+        char_span: lex.span().into(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Logos)]
+#[logos(utf8 = true)]
+#[logos(error(ParseError, callback = unknown_token))]
+#[logos(subpattern name = r"\p{L}(?:[\p{L}\p{N}])*")]
+#[logos(skip(r"[ \t\r\n\f]"))]
 pub enum TokenKind {
+    #[token("=")]
     Equals,
+
+    #[token(":")]
     Colon,
+
+    #[token(".")]
     Dot,
+
+    #[token(r"\")]
     Backslash,
+
+    #[token("|")]
     Bar,
+
+    #[token("_")]
     Underscore,
+
+    #[token("->")]
     DashGreaterThan,
+
+    #[token("(")]
     OpenParen,
+
+    #[token(")")]
     CloseParen,
+
+    #[token("true")]
     True,
+
+    #[token("false")]
     False,
+
+    #[token("let")]
     Let,
+
+    #[token("in")]
     In,
+
+    #[token("fun")]
     Fun,
+
+    #[token("if")]
     If,
+
+    #[token("then")]
     Then,
+
+    #[token("else")]
     Else,
+
+    #[token("forall")]
     Forall,
+
+    #[regex("(?&name)")]
     Name,
+
+    #[regex("'(?&name)")]
     TypeVarName,
+
+    #[regex("[0-9]+")]
     Number,
+
+    #[regex(r#""(?:(?:\")|[^"])*""#)]
     String,
+
     EndOfInput,
 }
 
@@ -104,417 +162,26 @@ impl Display for TokenKind {
 }
 
 #[derive(Debug, Clone)]
-enum LexError {
-    Err(ParseError),
-    Eoi,
-}
-
-#[derive(Debug, Clone)]
-#[must_use]
-enum LexResult<T> {
-    Ok(T),
-    Err(ParseError),
-    Eoi,
-}
-
-impl<T> Try for LexResult<T> {
-    type Output = T;
-
-    type Residual = LexError;
-
-    fn from_output(output: Self::Output) -> Self {
-        Self::Ok(output)
-    }
-
-    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
-        match self {
-            LexResult::Ok(x) => ControlFlow::Continue(x),
-            LexResult::Err(error) => ControlFlow::Break(LexError::Err(error)),
-            LexResult::Eoi => ControlFlow::Break(LexError::Eoi)
-        }
-    }
-}
-
-impl<T> FromResidual for LexResult<T> {
-    fn from_residual(residual: <Self as std::ops::Try>::Residual) -> Self {
-        match residual {
-            LexError::Err(error) => LexResult::Err(error),
-            LexError::Eoi => LexResult::Eoi
-        }
-    }
-}
-
-impl<T> From<Option<T>> for LexResult<T> {
-    fn from(value: Option<T>) -> Self {
-        match value {
-            Some(x) => LexResult::Ok(x),
-            None => LexResult::Eoi
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct StrLen {
-    chars: usize,
-    bytes: usize,
-}
-
-impl Add for StrLen {
-    type Output = StrLen;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            chars: self.chars + rhs.chars,
-            bytes: self.bytes + rhs.bytes
-        }
-    }
-}
-
-impl AddAssign for StrLen {
-    fn add_assign(&mut self, rhs: Self) {
-        self.chars += rhs.chars;
-        self.bytes += rhs.bytes;
-    }
-}
-
-struct PartialToken {
-    kind: TokenKind,
-    chars: usize,
-}
-
-struct Lexer<'src> {
-    source: &'src str,
-    offset: usize,
-    at_start: bool,
-    tokens: Vec<Token<'src>>,
-}
-
-impl<'src> Lexer<'src> {
-    pub fn new(source: &'src str) -> Self {
-        Self {
-            source,
-            offset: 0,
-            at_start: true,
-            tokens: Vec::new()
-        }
-    }
-
-    fn current(&self) -> Option<char> {
-        self.source.chars().next()
-    }
-
-    fn byte_length_of_chars(&self, count: usize) -> Option<usize> {
-        let mut chars = self.source.chars();
-        let mut bytes = 0;
-        for _ in 0..count {
-            bytes += chars.next()?.len_utf8();
-        }
-        Some(bytes)
-    }
-
-    fn consume_bytes(&mut self, bytes: usize) -> LexResult<&str> {
-        if bytes > self.source.len() {
-            return LexResult::Eoi;
-        }
-
-        let text = &self.source[..bytes];
-        self.source = &self.source[bytes..];
-        self.offset += bytes;
-
-        LexResult::Ok(text)
-    }
-
-    fn peek(&self, chars: usize) -> Option<&str> {
-        self.byte_length_of_chars(chars)
-            .map(|bytes| &self.source[..bytes])
-    }
-
-    fn leading(&self, mut f: impl FnMut(char) -> bool) -> StrLen {
-        let mut char_len = 0;
-        let mut byte_len = 0;
-
-        for c in self.source.chars() {
-            if !f(c) {
-                break;
-            }
-
-            char_len += 1;
-            byte_len += c.len_utf8();
-        }
-
-        StrLen {
-            chars: char_len,
-            bytes: byte_len
-        }
-    }
-
-    fn consume_whitespace(&mut self) -> LexResult<StrLen> {
-        let len = self.leading(is_whitespace);
-        self.consume_bytes(len.bytes)?;
-        LexResult::Ok(len)
-    }
-
-    fn push_token(&mut self, token: PartialToken) -> LexResult<()> {
-        let PartialToken { kind, chars } = token;
-
-        let bytes = LexResult::from(self.byte_length_of_chars(chars))?;
-        let from = self.offset;
-        let text = &self.source[..bytes];
-        self.source = &self.source[bytes..];
-        self.offset += bytes;
-
-        self.tokens.push(Token {
-            kind,
-            text,
-            span: TextSpan::new(from, bytes)
-        });
-
-        LexResult::Ok(())
-    }
-
-    pub fn lex_token(&mut self) -> LexResult<()> {
-        let current = LexResult::from(self.current())?;
-
-        if is_whitespace(current) {
-            _ = self.consume_whitespace();
-            return LexResult::Ok(());
-        }
-
-        if let Some(len) = self.comment() {
-            self.consume_bytes(len.bytes)?;
-            return LexResult::Ok(());
-        }
-
-        if let Some((name, len)) = self.name()? {
-            let kind = keyword(name).unwrap_or(TokenKind::Name);
-            self.push_token(PartialToken { chars: len.chars, kind })?;
-            return LexResult::Ok(());
-        }
-
-        if let Some(len) = self.type_var_name()? {
-            self.push_token(PartialToken { chars: len.chars, kind: TokenKind::TypeVarName })?;
-            return LexResult::Ok(());
-        }
-
-        if let Some(len) = self.number()? {
-            self.push_token(PartialToken { chars: len.chars, kind: TokenKind::Number })?;
-            return LexResult::Ok(());
-        }
-
-        if let Some(len) = self.string()? {
-            self.push_token(PartialToken { chars: len.chars, kind: TokenKind::String })?;
-            return LexResult::Ok(());
-        }
-
-        if let Some((len, kind)) = self.symbol() {
-            self.push_token(PartialToken { chars: len.chars, kind })?;
-            return LexResult::Ok(());
-        }
-
-        LexResult::Err(ParseError::UnknownCharacter {
-            char_span: TextSpan::new(self.offset, current.len_utf8())
-        })
-    }
-
-    fn comment(&self) -> Option<StrLen> {
-        if self.peek(2) != Some("//") {
-            return None;
-        }
-
-        let len = self.leading(|c| c != '\n');
-
-        Some(len)
-    }
-
-    fn name(&self) -> LexResult<Option<(&str, StrLen)>> {
-        let mut first = true;
-        let name_length = self.leading(|c| {
-            if first {
-                first = false;
-                can_begin_name(c)
-            } else {
-                can_appear_in_name(c)
-            }
-        });
-
-        if name_length.chars > 0 {
-            LexResult::Ok(Some((&self.source[..name_length.bytes], name_length)))
-        } else {
-            LexResult::Ok(None)
-        }
-    }
-
-    fn type_var_name(&self) -> LexResult<Option<StrLen>> {
-        let mut chars = self.source.chars();
-
-        if chars.next() != Some('\'') {
-            return LexResult::Ok(None);
-        }
-
-        let mut char_len = 1;
-        let mut byte_len = 1;
-
-        for c in chars {
-            if !can_appear_in_name(c) {
-                break;
-            }
-
-            char_len += 1;
-            byte_len += c.len_utf8();
-        }
-
-        if char_len == 0 {
-            LexResult::Err(ParseError::MalformedTypeVarName {
-                tick_span: TextSpan::new(self.offset, 1)
-            })
-        } else {
-            LexResult::Ok(Some(StrLen {
-                chars: char_len,
-                bytes: byte_len
-            }))
-        }
-    }
-
-    fn number(&self) -> LexResult<Option<StrLen>> {
-        let number_length = self.leading(|c| c.is_ascii_digit());
-        LexResult::Ok((number_length.chars > 0).then_some(number_length))
-    }
-
-    fn string(&self) -> LexResult<Option<StrLen>> {
-        let mut chars = self.source.chars();
-
-        if chars.next() != Some('"') {
-            return LexResult::Ok(None);
-        }
-
-        let mut len = StrLen { chars: 1, bytes: 1 };
-
-        loop {
-            let c = match chars.next() {
-                Some('\n') | None => return LexResult::Err(ParseError::UnterminatedString {
-                    string_span: TextSpan::new(self.offset, len.bytes)
-                }),
-                Some(c) => c
-            };
-
-            len += StrLen { chars: 1, bytes: c.len_utf8() };
-
-            if c == '"' {
-                break;
-            }
-        }
-
-        LexResult::Ok(Some(len))
-
-        // enum State { Start, Inside, End }
-
-        // let mut state = State::Start;
-        // let string_length = self.leading(|c| {
-        //     match state {
-        //         State::Start if c == '"' => {
-        //             state = State::Inside;
-        //             true
-        //         }
-        //         State::Inside if c == '"' => {
-        //             state = State::End;
-        //             true
-        //         }
-        //         State::Inside => true,
-        //         State::End | _ => false
-        //     }
-        // });
-
-        // LexResult::Ok((string_length.chars > 0).then_some(string_length))
-    }
-
-    fn symbol(&self) -> Option<(StrLen, TokenKind)> {
-        use TokenKind::*;
-
-        let single = self.current()?;
-        if let Some(kind) = match single {
-            '=' => Some(Equals),
-            ':' => Some(Colon),
-            '.' => Some(Dot),
-            '\\' => Some(Backslash),
-            '|' => Some(Bar),
-            '_' => Some(Underscore),
-            '(' => Some(OpenParen),
-            ')' => Some(CloseParen),
-            _ => None
-        } {
-            return Some(
-                (StrLen { chars: 1, bytes: single.len_utf8() }, kind)
-            );
-        }
-
-        let dual = self.peek(2)?;
-        if let Some(kind) = match dual {
-            "->" => Some(DashGreaterThan),
-            _ => None
-        } {
-            return Some(
-                (StrLen { chars: 2, bytes: dual.len() }, kind)
-            );
-        }
-
-        None
-    }
-}
-
-fn is_whitespace(c: char) -> bool {
-    c.is_whitespace()
-}
-
-fn can_begin_name(c: char) -> bool {
-    c.is_alphabetic()
-    // || c.is_symbol() || c.is_punctuation_other() || c.is_punctuation_dash() || c.is_punctuation_connector()
-}
-
-fn can_appear_in_name(c: char) -> bool {
-    can_begin_name(c) || c.is_numeric()
-}
-
-fn keyword(s: &str) -> Option<TokenKind> {
-    use TokenKind::*;
-    match s {
-        "true" => Some(True),
-        "false" => Some(False),
-        "let" => Some(Let),
-        "in" => Some(In),
-        "fun" => Some(Fun),
-        "if" => Some(If),
-        "then" => Some(Then),
-        "else" => Some(Else),
-        "forall" => Some(Forall),
-        _ => None
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct Lexed<'src> {
     pub tokens: Vec<Token<'src>>,
     pub eoi: Token<'static>,
 }
 
-pub fn lex<'src>(source: &'src str) -> Result<Lexed<'src>, ParseError> {
-    let mut lexer = Lexer::new(source);
-
-    loop {
-        match lexer.lex_token() {
-            LexResult::Ok(()) => {}
-            LexResult::Err(error) => return Err(error),
-            LexResult::Eoi => break
-        }
-
-        lexer.at_start = false;
-    }
-
-    let tokens = lexer.tokens;
+pub fn lex(source: &str) -> Result<Lexed<'_>, ParseError> {
+    let lexer = TokenKind::lexer(source);
+    let tokens = lexer.spanned()
+        .map(|(kind, span)|
+            kind.map(|kind| Token {
+                kind,
+                text: &source[span.clone()],
+                span: span.into()
+            }))
+        .collect::<Result<Vec<_>, _>>()?;
 
     let eoi = Token {
         kind: TokenKind::EndOfInput,
         text: "",
-        span: TextSpan::empty(lexer.offset)
+        span: TextSpan::empty(source.len())
     };
 
     Ok(Lexed {
@@ -525,8 +192,6 @@ pub fn lex<'src>(source: &'src str) -> Result<Lexed<'src>, ParseError> {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches::assert_matches;
-
     use super::*;
 
     fn print_result(res: &Result<Lexed, ParseError>) {
@@ -539,16 +204,6 @@ mod tests {
             }
             Err(e) => println!("{e:?}")
         }
-    }
-
-    #[test]
-    fn chars() {
-        let s = "räksmörgås 夜は奇妙だ";
-
-        let lexer = Lexer::new(s);
-
-        assert_matches!(lexer.byte_length_of_chars(16), Some(29));
-        assert_matches!(lexer.byte_length_of_chars(17), None);
     }
 
     #[test]
