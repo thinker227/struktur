@@ -38,6 +38,7 @@ fn unknown_token(lex: &mut logos::Lexer<TokenKind>) -> ParseError {
 #[logos(error(ParseError, callback = unknown_token))]
 #[logos(subpattern name = r"\p{L}(?:[\p{L}\p{N}])*")]
 #[logos(skip(r"[ \t\r\n\f]"))]
+#[logos(skip(r"//[^\n]*", allow_greedy = true))]
 pub enum TokenKind {
     #[token("=")]
     Equals,
