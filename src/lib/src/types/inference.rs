@@ -1082,18 +1082,12 @@ fn reference_graph(ast: &Ast<Sem>) -> DiGraph<Symbol, ()> {
     for item in items {
         match item {
             Item::Binding(binding) => {
-                // If a binding has a type annotation then we can let it
-                // sit on its own in the reference graph since it already has
-                // its type prescribed and does not need to
-                // participate in global inference with other bindings.
-                if binding.ty.is_none() {
-                    let mut referencer = Referencer {
-                        current: *bindings.get(&binding.symbol).unwrap(),
-                        bindings: &bindings,
-                        graph: &mut graph
-                    };
-                    referencer.visit(binding);
-                }
+                let mut referencer = Referencer {
+                    current: *bindings.get(&binding.symbol).unwrap(),
+                    bindings: &bindings,
+                    graph: &mut graph
+                };
+                referencer.visit(binding);
             }
         }
     }
@@ -1271,56 +1265,55 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
     let mut binding_vars = HashMap::new();
 
     for group in groups {
-        if let [item] = group.as_slice() {
-            let decl = ast.symbols().get(*item).decl();
+        // Split the bindings in the group into one set of annotated and one set of inferred bindings.
+        let mut annotated = Vec::new();
+        let mut inferred = Vec::new();
+        for item in group {
+            let decl = ast.symbols().get(item).decl();
             let binding = ast.get_node_as::<Binding<Sem>>(decl).unwrap();
 
-            // If there is only a single item in the group and that item has a type annotation,
-            // then we can infer it separately from everything else by checking directly against
-            // the annotated type.
-            if let Some(ref ann) = binding.ty {
-                let ann = generate_type(&ctx, ann)?;
-
-                // Important that we register the annotated type as the type of the symbol
-                // before inferring the body because otherwise the binding could not reference itself.
-                ctx.add_symbol_ty(*item, ann.clone().map(|ty| InferType::Type(ty.into()))).unwrap();
-
-                let ctx = ctx.extend();
-
-                match &ann {
-                    PolyType::Forall(forall) => check_forall(&ctx, &binding.body, forall)?,
-                    PolyType::Type(ty) => check(&ctx, &binding.body, ty)?
-                }
-
-                continue;
+            if let Some(ann) = &binding.ty {
+                annotated.push((binding, ann));
+            } else {
+                inferred.push(binding);
             }
         }
 
-        // There's either multiple bindings in the group, or the single binding in the group
-        // does not have a type annotation. In this case we infer all the bindings together.
-
-        // Create types for each binding and their parameters
+        // Create types for each inferred binding and their parameters
         // so that every binding in the group has a corresponding type when inferring their bodies.
-        for item in &group {
+        for binding in &inferred {
             // Make sure that the fresh meta variables do not have level 0.
             let ctx = ctx.extend();
 
             let binding_var = ctx.fresh_meta();
 
-            binding_vars.insert(*item, binding_var.clone());
-            ctx.add_symbol_ty(*item, PolyType::Type(InferType::Var(binding_var))).unwrap();
+            binding_vars.insert(binding.symbol, binding_var.clone());
+            ctx.add_symbol_ty(binding.symbol, PolyType::Type(InferType::Var(binding_var))).unwrap();
+        }
+
+        // Begin by checking all bindings with explicit type annotations.
+        for (binding, ann) in &annotated {
+            let ann = generate_type(&ctx, ann)?;
+
+            // Important that we register the annotated type as the type of the symbol
+            // before inferring the body because otherwise the binding could not reference itself.
+            ctx.add_symbol_ty(binding.symbol, ann.clone().map(|ty| InferType::Type(ty.into()))).unwrap();
+
+            let ctx = ctx.extend();
+
+            match &ann {
+                PolyType::Forall(forall) => check_forall(&ctx, &binding.body, forall)?,
+                PolyType::Type(ty) => check(&ctx, &binding.body, ty)?
+            }
         }
 
         // Infer the bodies of each binding.
-        for item in &group {
-            let decl = ast.symbols().get(*item).decl();
-            let binding = ast.get_node_as::<Binding<Sem>>(decl).unwrap();
-
+        for binding in &inferred {
             let ctx = ctx.extend();
 
             let body_ty = infer(&ctx, &binding.body)?;
 
-            let binding_var = binding_vars.get(item).unwrap().clone();
+            let binding_var = binding_vars.get(&binding.symbol).unwrap().clone();
 
             // Important that the level here is 1,
             // since unification variables declared at the top-level
@@ -1329,13 +1322,13 @@ pub fn type_check(ast: &Ast<Sem>) -> Result<Ast<Typed>, TypeCheckError> {
         }
 
         // Try to generalize the binding types.
-        for item in &group {
-            let binding_var = binding_vars.get(item).unwrap().clone();
+        for binding in &inferred {
+            let binding_var = binding_vars.get(&binding.symbol).unwrap().clone();
 
             // If we can generalize the binding type then replace the type in the context for further use.
             // Otherwise, the type can just be used as-is since it doesn't contain any unsolved unification variables.
             if let Ok(general) = generalize(&ctx, InferType::Var(binding_var)) {
-                ctx.replace_symbol_ty(*item, PolyType::Forall(general));
+                ctx.replace_symbol_ty(binding.symbol, PolyType::Forall(general));
             }
         }
     }
