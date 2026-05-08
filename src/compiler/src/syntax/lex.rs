@@ -8,6 +8,7 @@ use crate::{
 };
 
 use super::{Token, TokenKind};
+use ariadne::Label;
 use logos::Logos as _;
 
 /// An error produced by lexing.
@@ -21,8 +22,11 @@ pub struct LexError {
 impl LexError {
     pub fn to_diagnostic(self, context: SourceContext) -> Diagnostic {
         let code = Code::parse(SyntaxErrorCode::UnknownCharacter.into());
-        Diagnostic::error(code, self.span.with_context(context), |report| {
-            report.with_message("Unknown character")
+        let location = self.span.with_context(context);
+        Diagnostic::error(code, location, |report| {
+            report
+                .with_message("Unknown character")
+                .with_label(Label::new(location).with_message("This character"))
         })
     }
 }
