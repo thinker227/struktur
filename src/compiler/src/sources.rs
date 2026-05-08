@@ -128,7 +128,7 @@ impl Default for SourceProject {
     }
 }
 
-impl Cache<SourceContext> for SourceProject {
+impl Cache<SourceContext> for &SourceProject {
     type Storage = String;
 
     fn fetch(&mut self, id: &SourceContext) -> Result<&SourceText, impl std::fmt::Debug> {
