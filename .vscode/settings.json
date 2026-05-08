@@ -1,0 +1,24 @@
+{
+  // File and directory organization
+  "files.exclude": {
+    ".git/": true,
+    "target/": true
+  },
+
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "Cargo.toml": "Cargo.lock,rust-toolchain*",
+    "package.json": "language-configuration.json",
+    "*.strukt": "${capture}.js"
+  },
+
+  "files.associations": {
+    "**/*.snap*": "yaml"
+  },
+
+  "explorer.sortOrder": "default",
+
+  // Formatting
+  "prettier.enable": true,
+  "editor.formatOnSave": true
+}

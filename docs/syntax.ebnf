@@ -1,0 +1,46 @@
+(* Note:
+   This syntax is not exact, instead it's meant more as an overview.
+   Parts of it is ambiguous, but the subset implemented by the parser is not.
+*)
+
+root = item* ;
+
+item = binding ;
+
+binding = 'let' NAME typeAnn? '=' expr ;
+
+expr = '(' ')'                             (* Unit *)
+     | NUMBER                              (* Int *)
+     | 'true' | 'false'                    (* Bool *)
+     | STRING                              (* String *)
+     | NAME                                (* Variable *)
+     | 'let' pattern '=' expr 'in' expr    (* Let binding *)
+     | 'fun' '|'? case ('|' case)*         (* Lambda *)
+     | 'if' expr 'then' expr 'else' expr   (* If-else *)
+     | expr expr                           (* Application *)
+     | expr typeAnn                        (* Type annotation *)
+     | '(' expr ')'                        (* Syntactic grouping *)
+     ;
+
+case = pattern '->' expr ;
+
+pattern = '_'                     (* Wildcard *)
+        | NAME                    (* Wildcard variable *)
+        | '(' ')'                 (* Unit *)
+        | NUMBER                  (* Int *)
+        | 'true' | 'false'        (* Bool *)
+        | pattern typeAnn         (* Type annotation *)
+        | '(' pattern ')'         (* Syntactic grouping *)
+        ;
+
+typeAnn = ':' type ;
+
+type = '(' ')'                         (* Unit *)
+     | 'Int'                           (* Int *)
+     | 'Bool'                          (* Bool *)
+     | 'String'                        (* String *)
+     | TYPE_VAR                        (* Type variable *)
+     | type '->' type                  (* Function *)
+     | 'forall' TYPE_VAR* '.' type     (* Quantifier *)
+     | '(' type ')'                    (* Syntactic grouping *)
+     ;

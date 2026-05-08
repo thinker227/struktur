@@ -1,0 +1,142 @@
+# Type system
+
+Struktur's type system is strongly based on [Hindley-Milner type inference](https://en.wikipedia.org/wiki/Hindley-Milner_type_system) and [System Fω](https://en.wikipedia.org/wiki/System_F). It <!--is a [rank-2 predicative type system](#higher-rank-polymorphism), featuring--> features [algebraic data types](#algebraic-data-types), [first-class functions](#first-class-functions), <!--[laziness](#laziness),--> [type functions](#type-functions), <!--[higher-kinded types](#higher-kinded-types),--> and [universal quantification](#universal-quantification)<!--, [typeclasses](#typeclasses), and [an effect system](#effect-system)-->.
+
+## Algebraic data types
+
+Types can be either _product_ or _sum_ types.
+
+Product types are a single type constructor that is a combination of types.
+
+```ocaml
+type Person = { Int; String }
+```
+
+Sum types are a set of one or more type constructors, each of which may represent a combination of types.
+
+```ocaml
+type Contact = Address { String }
+             | Phone { Int }
+```
+
+Aliases are structural type aliases; they provide a different name for a type. An alias is entirely equivalent to its aliased type — an alias is not a distinct type.
+
+```ocaml
+alias User = Person
+```
+
+## Primitive types
+
+### `()`
+
+`()` or "unit" is an uninteresting single-value type. It can be conceptualized as a sum type with a single constructor.
+
+```ocaml
+type () = ()
+```
+
+### `Int`
+
+`Int` is a 64-bit signed integer. It can be conceptualized as a sum type with 2^64 constructors.
+
+```ocaml
+type Int = 0 | 1 | 2 | ... | -1 | -2 | ...
+```
+
+### `Bool`
+
+`Bool` is a logical boolean. It can be conceptualized as a sum type with 2 constructors.
+
+```ocaml
+type Bool = true | false
+```
+
+### `String`
+
+`String` is a sequence of characters (representation TBD).
+
+## First-class functions
+
+Functions can be passed as values to other functions. A function from a value of type `A` to a value of type `B` is written as `A -> B`.
+
+<!--
+## Laziness
+
+Struktur is *strict* by default, meaning that expressions are evaluated eagerly. In more formal terms, if `x` evaluates to `⊥`, `f x` always evaluates to `⊥`.
+
+Strictness can be opted out of by using the `~` type operator. `~T` is the type of a lazily evaluated `T`.
+
+Notably, `A -> ~B` is different from `~(A -> B)`. The former is a function from `A` to a lazily evaluated `B` (i.e. the computation the function performs is lazy), while the latter is a lazily evaluated function from `A` to `B` (i.e. the computation used to compute the function itself is lazy).
+-->
+
+## Type functions
+
+A type function is a type-level function accepting types as arguments and producing a type. They are declared like ADTs except with a list of type variables after the name.
+
+```ocaml
+type Option 'a = Some { 'a }
+               | None
+```
+
+<!--
+### Higher-kinded types
+
+A kind describes the "signature" of a type when viewed as a type function.
+
+```ocaml
+Int    : T
+Option : T -> T
+```
+
+A higher-kinded type is a higher-order function lifted into the universe of types. Just like `(A -> B) -> C` is a higher-order function—a function accepting a function—a higher-kinded type is a type function accepting a type function.
+
+```ocaml
+Functor : (T -> T) -> T -> Trait
+```
+
+The `Functor` higher-kinded type(class) conceptually mirrors the `map` function but for types.
+
+No universes beyond types and kinds are supported.
+-->
+
+## Universal quantification
+
+A polymorphic function can be written as
+
+```ocaml
+let id : forall 'a. 'a -> 'a
+       = fun x -> x
+```
+
+`forall 'a` indicates that the type applies to any type `'a`.
+
+<!--
+### Higher-rank polymorphism
+
+Struktur's type system employs rank-2 predicative polymorphism. This means that a quantifier can occur nested to the left of at most a single function arrow.
+
+```ocaml
+f : (forall 'a. 'a -> 'a) -> ()
+  = fun id -> let _ = id 0 in
+              let _ = id true in
+              ()
+```
+
+The function `id` above is a function quantified over any type `'a`, itself passed as a parameter to the function `f`. Functions such as these have to be explicitly type-annotated using `forall.` since the quantifier cannot be inferred.
+
+A rank-2 type is one taking a quantified type, a rank-1 type is itself a quantified type, and a rank-0 type is a type with no quantifiers.
+
+```ocaml
+rank2 : (forall 'a. 'a -> ()) -> ()
+rank1 : forall 'a. 'a -> ()
+rank0 : ()
+```
+
+## Typeclasses
+
+**TBD**
+
+## Effect system
+
+**TBD**
+-->

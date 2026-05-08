@@ -1,0 +1,22 @@
+---
+source: src/compiler/src/syntax/parse.rs
+expression: root
+---
+kind: Root
+children:
+  - kind: Binding
+    children:
+      - kind: Let
+        span: 0..3
+      - kind: Ident
+        children:
+          - kind: Ident
+            span: 4..5
+      - kind: Equals
+        span: 6..7
+      - kind: IntExpr
+        children:
+          - kind: Number
+            span: 8..9
+  - kind: EndOfInput
+    span: 9..9
