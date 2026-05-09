@@ -8,7 +8,10 @@ name = "struktur"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1.0.102"
 ariadne = "0.6.0"
-clap = { version = "4.6.1", features = ["wrap_help"] }
+clap = { version = "4.6.1", features = ["wrap_help", "cargo"] }
+colored = "3.1.1"
 pathdiff = "0.2.3"
+serde_yml = "0.0.12"
 struktur = { version = "*", path = "../compiler" }
