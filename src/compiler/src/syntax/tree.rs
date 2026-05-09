@@ -116,7 +116,7 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
     }
 
     /// Gets the child nodes of the node.
-    pub fn nodes(self) -> impl Iterator<Item = Self> {
+    pub fn nodes(self) -> impl Iterator<Item = Self> + Clone {
         self.get().nodes.iter().map(move |x| Self {
             map: self.map,
             id: x.value,
@@ -124,7 +124,7 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
     }
 
     /// Gets the child tokens of the node.
-    pub fn tokens(self) -> impl Iterator<Item = &'map Token> {
+    pub fn tokens(self) -> impl Iterator<Item = &'map Token> + Clone {
         self.get().tokens.iter().map(|x| &x.value)
     }
 
@@ -324,6 +324,7 @@ impl<Kind, Token> Clone for NodeOrToken<'_, Kind, Token> {
 
 impl<Kind, Token> Copy for NodeOrToken<'_, Kind, Token> {}
 
+#[derive(Debug, Clone)]
 struct ChildrenIter<'map, Kind, Token> {
     node: SyntaxNode<'map, Kind, Token>,
     node_index: usize,

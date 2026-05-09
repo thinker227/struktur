@@ -82,7 +82,7 @@ impl<'map> Ident<'map> {
 node!(Root, SyntaxKind::Root);
 
 impl<'map> Root<'map> {
-    pub fn items(self) -> impl Iterator<Item = Item<'map>> {
+    pub fn items(self) -> impl Iterator<Item = Item<'map>> + Clone {
         self.0.nodes().map(|x| Item::new(x).unwrap())
     }
 
@@ -230,11 +230,11 @@ impl<'map> LambdaExpr<'map> {
         self.0.node(0).unwrap().token(0).copied()
     }
 
-    pub fn bars(self) -> impl Iterator<Item = Token> {
+    pub fn bars(self) -> impl Iterator<Item = Token> + Clone {
         self.0.nodes().filter_map(|x| x.token(0).copied())
     }
 
-    pub fn cases(self) -> impl Iterator<Item = Case<'map>> {
+    pub fn cases(self) -> impl Iterator<Item = Case<'map>> + Clone {
         self.0
             .nodes()
             .map(|x| Case::new(x.node(0).unwrap()).unwrap())
@@ -517,7 +517,7 @@ impl<'map> ForallTyExpr<'map> {
         *self.0.token(0).unwrap()
     }
 
-    pub fn vars(self) -> impl Iterator<Item = VarTyExpr<'map>> {
+    pub fn vars(self) -> impl Iterator<Item = VarTyExpr<'map>> + Clone {
         self.0
             .node(0)
             .unwrap()
