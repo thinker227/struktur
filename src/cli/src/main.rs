@@ -28,19 +28,7 @@ fn main() -> ExitCode {
     let args: Args = root_command().get_matches().into();
 
     let logger = Arc::new(Logger::new(args.quiet));
-
-    {
-        let logger = logger.clone();
-        panic::set_hook(Box::new(move |panic| {
-            let payload = panic
-                .payload_as_str()
-                .unwrap_or("(no panic payload)")
-                .to_owned();
-
-            // We don't *really* care about panicing here? We're already panicing lol
-            elog!(logger, "Panic", "{payload}").unwrap();
-        }));
-    }
+    set_panic_hook(logger.clone());
 
     let result = execute(&args, &logger);
 
@@ -51,6 +39,18 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn set_panic_hook(logger: Arc<Logger>) {
+    panic::set_hook(Box::new(move |panic| {
+        let payload = panic
+            .payload_as_str()
+            .unwrap_or("(no panic payload)")
+            .to_owned();
+
+        // We don't *really* care about panicing here? We're already panicing lol
+        elog!(logger, "Panic", "{payload}").unwrap();
+    }));
 }
 
 fn execute(args: &Args, logger: &Logger) -> anyhow::Result<ExitCode> {
