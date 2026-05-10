@@ -1,5 +1,6 @@
 use std::{
     env,
+    fmt::Write as _,
     fs::{self, File},
     panic,
     path::{self, Path, PathBuf},
@@ -43,13 +44,25 @@ fn main() -> ExitCode {
 
 fn set_panic_hook(logger: Arc<Logger>) {
     panic::set_hook(Box::new(move |panic| {
-        let payload = panic
+        let mut text = panic
             .payload_as_str()
             .unwrap_or("(no panic payload)")
             .to_owned();
 
+        if let Some(location) = panic.location() {
+            writeln!(text).unwrap();
+            write!(
+                text,
+                "at {}:{} in {}",
+                location.line(),
+                location.column(),
+                location.file()
+            )
+            .unwrap();
+        }
+
         // We don't *really* care about panicing here? We're already panicing lol
-        elog!(logger, "Panic", "{payload}").unwrap();
+        elog!(logger, "Panic", "{text}").unwrap();
     }));
 }
 
