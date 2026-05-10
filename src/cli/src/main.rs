@@ -10,8 +10,14 @@ use std::{
 
 use anyhow::Context;
 use struktur::{
-    sources::{Source, SourceName, SourceProject},
-    syntax::{Nodes, SyntaxNode, lex::lex, parse::parse},
+    sources::{SourceContext, SourceName, SourceProject},
+    symbols::{Symbols, build_ref_graph, resolve_symbols},
+    syntax::{
+        Nodes, SyntaxNode,
+        lex::lex,
+        nodes::{Item, Root},
+        parse::parse,
+    },
 };
 
 use crate::{
@@ -90,11 +96,14 @@ fn execute(args: &Args, logger: &Logger) -> anyhow::Result<ExitCode> {
     })?;
 
     let mut sources = SourceProject::new();
-    let source = sources.add(SourceName::File(input_display.clone()), text);
+    let source = sources
+        .add(SourceName::File(input_display.clone()), text)
+        .key();
 
     let result = compile(
         &pwd,
         &input_path,
+        &sources,
         source,
         args.build,
         args.ast,
@@ -123,13 +132,16 @@ fn sibling_file_path(path: &Path, extension: &str) -> PathBuf {
 fn compile(
     pwd: &Path,
     input_path: &Path,
-    source: &Source,
+    sources: &SourceProject,
+    ctx: SourceContext,
     _no_run: bool,
     print_ast: bool,
     _print_types: bool,
     _print_cps: bool,
     logger: &Logger,
 ) -> Result<(), Error> {
+    let source = sources.get(ctx).unwrap();
+
     log!(logger, "Compiling", "{}", source.name())?;
 
     let mut nodes = Nodes::new();
@@ -163,6 +175,16 @@ fn compile(
             ast_display.to_string_lossy()
         )?;
     }
+
+    let mut symbols = Symbols::new();
+
+    let root = Root::new(root).unwrap();
+    resolve_symbols(&mut symbols, sources, root)?;
+
+    let bindings = root.items().map(|item| match item {
+        Item::Binding(binding) => binding,
+    });
+    let _ref_graph = build_ref_graph(&symbols, bindings)?;
 
     Ok(())
 }

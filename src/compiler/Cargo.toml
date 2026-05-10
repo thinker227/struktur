@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 ariadne = "0.6.0"
+itertools = "0.14.0"
 logos = "0.16.1"
+petgraph = "0.8.3"
 serde = { version = "1.0.228", features = ["derive"] }
 slotmap = "1.1.1"
 

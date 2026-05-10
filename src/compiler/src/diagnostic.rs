@@ -13,12 +13,14 @@ pub type ReportBuilder = ariadne::ReportBuilder<'static, TextLocation>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Category {
     Parse,
+    Resolve,
 }
 
 impl Display for Category {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Category::Parse => write!(f, "PARSE"),
+            Category::Resolve => write!(f, "RESOLVE"),
         }
     }
 }
