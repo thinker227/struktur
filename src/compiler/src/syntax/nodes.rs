@@ -8,6 +8,7 @@
 //! None of the structs store their properties directly, every property is lazily computed.
 
 use super::{NodeId, SyntaxKind, SyntaxNode, Token};
+use crate::text::{Spanned, TextSpan};
 
 macro_rules! node {
     ($name:ident, $kind:expr) => {
@@ -30,6 +31,12 @@ macro_rules! node {
 
             pub fn id(self) -> NodeId {
                 self.raw().id()
+            }
+        }
+
+        impl Spanned for $name<'_> {
+            fn span(&self) -> TextSpan {
+                self.raw().span()
             }
         }
     };
@@ -64,6 +71,12 @@ macro_rules! enum_node {
 
             pub fn id(self) -> NodeId {
                 self.raw().id()
+            }
+        }
+
+        impl Spanned for $name<'_> {
+            fn span(&self) -> TextSpan {
+                self.raw().span()
             }
         }
     };
