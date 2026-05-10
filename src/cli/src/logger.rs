@@ -54,7 +54,7 @@ impl Logger {
         }
 
         for line in lines {
-            write!(stream, "{:>14}", ' ')?;
+            write!(stream, "{:>13}", ' ')?;
             writeln!(stream, "{line}")?;
         }
 
