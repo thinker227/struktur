@@ -7,14 +7,14 @@ use crate::{
     text::{Spanned as _, TextSpan},
 };
 
-use super::{NodeBuilder, NodeId, NodeMap, SyntaxKind, Token, TokenKind};
+use super::{NodeBuilder, NodeId, Nodes, SyntaxKind, Token, TokenKind};
 
 mod errors;
 
 type Result<T = NodeId, E = Diagnostic> = std::result::Result<T, E>;
 
 /// Parses a sequence of tokens into an AST.
-pub fn parse(map: &mut NodeMap, tokens: Tokens) -> Result {
+pub fn parse(map: &mut Nodes, tokens: Tokens) -> Result {
     let mut parser = Parser::new(
         tokens.source,
         TokenStream::new(&tokens.tokens, tokens.eoi),
@@ -104,11 +104,11 @@ impl<'tokens> TokenStream<'tokens> {
 struct Parser<'a> {
     source: &'a Source,
     tokens: TokenStream<'a>,
-    map: &'a mut NodeMap,
+    map: &'a mut Nodes,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(source: &'a Source, tokens: TokenStream<'a>, map: &'a mut NodeMap) -> Self {
+    pub fn new(source: &'a Source, tokens: TokenStream<'a>, map: &'a mut Nodes) -> Self {
         Self {
             source,
             tokens,
@@ -120,7 +120,7 @@ impl<'a> Parser<'a> {
         let mut builder = NodeBuilder::new(kind);
         build(&mut builder);
         let node = builder.finish_raw();
-        self.map.insert(node)
+        self.map.insert(node, self.source.key())
     }
 
     fn error(
@@ -686,7 +686,7 @@ mod tests {
 
     use super::*;
 
-    fn test_parse<'map>(map: &'map mut NodeMap, text: &str) -> Result<Root<'map>> {
+    fn test_parse<'map>(map: &'map mut Nodes, text: &str) -> Result<Root<'map>> {
         let mut sources = SourceProject::new();
         let source = sources.add(
             SourceName::InMemory {
@@ -706,7 +706,7 @@ mod tests {
 
     #[test]
     fn simple_let_expr() {
-        let mut map = NodeMap::with_key();
+        let mut map = Nodes::new();
 
         let text = "let x = 0";
         let root = test_parse(&mut map, text).unwrap().raw();
@@ -716,7 +716,7 @@ mod tests {
 
     #[test]
     fn simple_unexpected_token() {
-        let mut map = NodeMap::with_key();
+        let mut map = Nodes::new();
 
         let diagnostic = test_parse(&mut map, "let.").unwrap_err();
 
@@ -729,7 +729,7 @@ mod tests {
 
     #[test]
     fn empty_forall() {
-        let mut map = NodeMap::with_key();
+        let mut map = Nodes::new();
 
         let text = "let x: forall. () = ()";
         let diagnostic = test_parse(&mut map, text).unwrap_err();
@@ -743,7 +743,7 @@ mod tests {
 
     #[test]
     fn unknown_type() {
-        let mut map = NodeMap::with_key();
+        let mut map = Nodes::new();
 
         let text = "let x: uwu = 0";
         let diagnostic = test_parse(&mut map, text).unwrap_err();

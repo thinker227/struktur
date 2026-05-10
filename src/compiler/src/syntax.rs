@@ -17,11 +17,8 @@ pub mod tree;
 
 pub use tree::NodeId;
 
-/// A mapping between node IDs and syntax nodes.
-pub type NodeMap = tree::NodeMap<SyntaxKind, Token>;
-
+pub type Nodes = tree::Nodes<SyntaxKind, Token>;
 pub type NodeBuilder = tree::NodeBuilder<SyntaxKind, Token>;
-
 pub type SyntaxNode<'map> = tree::SyntaxNode<'map, SyntaxKind, Token>;
 
 /// A syntax token.

@@ -1,8 +1,8 @@
 //! Core untyped syntax tree structure.
 //!
-//! At their core, syntax nodes are a [RawNode] identified by a [NodeId] inside of a [NodeMap].
+//! At their core, syntax nodes are a [RawNode] identified by a [NodeId] inside of a [Nodes].
 //! [RawNode] is completely opaque—the only way to get at the contents is by wrapping it
-//! and the [NodeMap] it is registered in with a [SyntaxNode], which provides an API
+//! and the [Nodes] it is registered in with a [SyntaxNode], which provides an API
 //! for querying the children nodes and tokens.
 //!
 //! Everything in this module is paramerized by two types—a kind and a token.
@@ -14,26 +14,77 @@
 //! Therefore, throughout most of the compiler, a set of strongly typed structs and enums
 //! is layered on top of the untyped tree in order to provide a more rigid structure.
 
-use crate::text::{Spanned, TextSpan};
+use crate::{
+    sources::SourceContext,
+    text::{Spanned, TextLocation, TextSpan},
+};
 use serde::{Serialize, Serializer, ser::SerializeStruct as _};
-use slotmap::{SlotMap, new_key_type};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 use std::{
     fmt::{Debug, Formatter},
     ptr,
 };
 
+new_key_type! {
+    /// A unique identifier for a syntax node.
+    pub struct NodeId;
+}
+
 /// A mapping between node IDs and syntax nodes.
-pub type NodeMap<Kind, Token> = SlotMap<NodeId, RawNode<Kind, Token>>;
+#[derive(Debug, Clone)]
+pub struct Nodes<Kind, Token> {
+    map: SlotMap<NodeId, RawNode<Kind, Token>>,
+    contexts: SecondaryMap<NodeId, SourceContext>,
+}
+
+impl<Kind, Token> Nodes<Kind, Token> {
+    /// Creates a new node map.
+    pub fn new() -> Self {
+        Self {
+            map: SlotMap::with_key(),
+            contexts: SecondaryMap::new(),
+        }
+    }
+
+    /// Gets the raw node for a given node ID.
+    ///
+    /// # Panics
+    /// Panics if the node ID is not related to this specific node map.
+    pub fn get(&self, id: NodeId) -> &RawNode<Kind, Token> {
+        self.map
+            .get(id)
+            .expect("node ID should be present in the node map")
+    }
+
+    /// Gets the source context for a given node ID.
+    ///
+    /// # Panics
+    /// Panics if the node ID is not related to this specific node map.
+    pub fn context(&self, id: NodeId) -> SourceContext {
+        *self
+            .contexts
+            .get(id)
+            .expect("node ID should be present in the node map")
+    }
+
+    /// Inserts a new node into the map, returning its ID.
+    pub fn insert(&mut self, node: RawNode<Kind, Token>, context: SourceContext) -> NodeId {
+        let id = self.map.insert(node);
+        self.contexts.insert(id, context);
+        id
+    }
+}
+
+impl<Kind, Token> Default for Nodes<Kind, Token> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Indexed<T> {
     value: T,
     index: usize,
-}
-
-new_key_type! {
-    /// A unique identifier for a syntax node.
-    pub struct NodeId;
 }
 
 /// Opaque raw data for a syntax node.
@@ -50,10 +101,10 @@ pub struct RawNode<Kind, Token> {
 
 /// Provides the main API for working with nodes.
 ///
-/// [SyntaxNode] is just a wrapper around a [NodeId] and a reference to a [NodeMap]
+/// [SyntaxNode] is just a wrapper around a [NodeId] and a reference to a [Nodes]
 /// and is as such trivially copyable since it's effectively just a pointer with metadata.
 pub struct SyntaxNode<'map, Kind, Token> {
-    map: &'map NodeMap<Kind, Token>,
+    map: &'map Nodes<Kind, Token>,
     id: NodeId,
 }
 
@@ -66,12 +117,12 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
     /// Creates a new [SyntaxNode].
     ///
     /// The ID **has** to be present in the map, otherwise most methods on this struct will panic.
-    pub fn new(map: &'map NodeMap<Kind, Token>, id: NodeId) -> Self {
+    pub fn new(map: &'map Nodes<Kind, Token>, id: NodeId) -> Self {
         Self { map, id }
     }
 
     /// Gets the wrapped map.
-    pub fn map(self) -> &'map NodeMap<Kind, Token> {
+    pub fn map(self) -> &'map Nodes<Kind, Token> {
         self.map
     }
 
@@ -82,9 +133,12 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
 
     /// Gets a reference to the inner [RawNode].
     pub fn get(self) -> &'map RawNode<Kind, Token> {
-        self.map
-            .get(self.id)
-            .expect("node ID should be present in the node map")
+        self.map.get(self.id)
+    }
+
+    /// Gets the [SourceContext] for the node.
+    pub fn context(self) -> SourceContext {
+        self.map.context(self.id)
     }
 
     /// Gets the kind of the node.
@@ -176,6 +230,13 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
             node_index: 0,
             token_index: 0,
         }
+    }
+}
+
+impl<Kind, Token: Spanned> SyntaxNode<'_, Kind, Token> {
+    /// Gets the location of the node.
+    pub fn location(self) -> TextLocation {
+        self.span().with_context(self.context())
     }
 }
 
@@ -457,10 +518,11 @@ impl<Kind, Token> NodeBuilder<Kind, Token> {
     /// then returns a [SyntaxNode] wrapping the map and newly created node ID.
     pub fn finish_opt<'map>(
         self,
-        map: &'map mut NodeMap<Kind, Token>,
+        map: &'map mut Nodes<Kind, Token>,
+        context: SourceContext,
     ) -> Option<SyntaxNode<'map, Kind, Token>> {
         let raw = self.finish_raw_opt()?;
-        let id = map.insert(raw);
+        let id = map.insert(raw, context);
         Some(SyntaxNode { id, map })
     }
 
@@ -468,9 +530,10 @@ impl<Kind, Token> NodeBuilder<Kind, Token> {
     /// then returns a [SyntaxNode] wrapping the map and newly created node ID.
     pub fn finish<'map>(
         self,
-        map: &'map mut NodeMap<Kind, Token>,
+        map: &'map mut Nodes<Kind, Token>,
+        context: SourceContext,
     ) -> SyntaxNode<'map, Kind, Token> {
-        self.finish_opt(map).expect(Self::EMPTY_MSG)
+        self.finish_opt(map, context).expect(Self::EMPTY_MSG)
     }
 }
 
@@ -500,6 +563,22 @@ macro_rules! make_node {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sources::{SourceName, SourceProject};
+
+    macro_rules! test_prelude {
+        () => {{
+            let map = Nodes::new();
+            let mut sources = SourceProject::new();
+            let source = sources.add(
+                SourceName::InMemory {
+                    name: "test".to_owned(),
+                },
+                "".to_owned(),
+            );
+            let ctx = source.key();
+            (map, sources, ctx)
+        }};
+    }
 
     #[test]
     fn finished_empty_returns_none() {
@@ -510,18 +589,18 @@ mod tests {
 
     #[test]
     fn children() {
-        let mut map = SlotMap::with_key();
+        let (mut map, _, ctx) = test_prelude!();
 
         let node = make_node!(
             621;
             token 1,
             token 2,
-            node make_node!(3; token 69).finish(&mut map),
+            node make_node!(3; token 69).finish(&mut map, ctx),
             token 4,
-            node make_node!(5; token 420).finish(&mut map),
+            node make_node!(5; token 420).finish(&mut map, ctx),
             token 6
         )
-        .finish(&mut map);
+        .finish(&mut map, ctx);
 
         let mut children = node.children();
 
@@ -536,15 +615,16 @@ mod tests {
 
     #[test]
     fn first_last() {
-        let mut map = SlotMap::with_key();
+        let (mut map, _, ctx) = test_prelude!();
+        // let mut map = SlotMap::with_key();
 
         let node = make_node!(
             0;
-            node make_node!(1; token 0).finish(&mut map),
+            node make_node!(1; token 0).finish(&mut map, ctx),
             token 0,
-            node make_node!(2; token 0).finish(&mut map)
+            node make_node!(2; token 0).finish(&mut map, ctx)
         )
-        .finish(&mut map);
+        .finish(&mut map, ctx);
 
         assert_eq!(node.first().into_node().unwrap().kind(), &1);
         assert_eq!(node.last().into_node().unwrap().kind(), &2);
@@ -552,10 +632,10 @@ mod tests {
         let node = make_node!(
             0;
             token 1,
-            node make_node!(0; token 0).finish(&mut map),
+            node make_node!(0; token 0).finish(&mut map, ctx),
             token 2
         )
-        .finish(&mut map);
+        .finish(&mut map, ctx);
 
         assert_eq!(node.first().into_token().unwrap(), &1);
         assert_eq!(node.last().into_token().unwrap(), &2);

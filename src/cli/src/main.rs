@@ -10,7 +10,7 @@ use std::{
 use anyhow::Context;
 use struktur::{
     sources::{Source, SourceName, SourceProject},
-    syntax::{NodeMap, SyntaxNode, lex::lex, parse::parse},
+    syntax::{Nodes, SyntaxNode, lex::lex, parse::parse},
 };
 
 use crate::{
@@ -119,7 +119,7 @@ fn compile(
 ) -> Result<(), Error> {
     log!(logger, "Compiling", "{}", source.name())?;
 
-    let mut nodes = NodeMap::with_key();
+    let mut nodes = Nodes::new();
 
     let tokens = lex(source)?;
     let root_id = parse(&mut nodes, tokens)?;
