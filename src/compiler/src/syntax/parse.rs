@@ -306,6 +306,17 @@ impl Parser<'_> {
                 }
             }
 
+            TokenKind::Ident => {
+                let ident = self.parse_ident()?;
+
+                ParsedExpr {
+                    expr: self.node(SyntaxKind::VarExpr, |b| {
+                        b.add_node(ident);
+                    }),
+                    complex: false,
+                }
+            }
+
             TokenKind::Let if ctx.allow_keyword => {
                 let r#let = self.parse_let_expr()?;
 
@@ -344,7 +355,6 @@ impl Parser<'_> {
             TokenKind::Number => SyntaxKind::IntExpr,
             TokenKind::True | TokenKind::False => SyntaxKind::BoolExpr,
             TokenKind::String => SyntaxKind::StringExpr,
-            TokenKind::Ident => SyntaxKind::VarExpr,
             _ => return None,
         };
 
@@ -508,6 +518,14 @@ impl Parser<'_> {
                 }
             }
 
+            TokenKind::Ident => {
+                let ident = self.parse_ident()?;
+
+                self.node(SyntaxKind::VarPattern, |b| {
+                    b.add_node(ident);
+                })
+            }
+
             _ if let Some(pattern) = self.try_parse_single_token_atom_pattern() => pattern,
 
             _ => {
@@ -522,7 +540,6 @@ impl Parser<'_> {
     fn try_parse_single_token_atom_pattern(&mut self) -> Option<NodeId> {
         let syntax_kind = match self.tokens.current().kind {
             TokenKind::Underscore => SyntaxKind::WildcardPattern,
-            TokenKind::Ident => SyntaxKind::VarPattern,
             TokenKind::Number => SyntaxKind::IntPattern,
             TokenKind::True | TokenKind::False => SyntaxKind::BoolPattern,
             _ => return None,
@@ -641,7 +658,9 @@ impl Parser<'_> {
         let mut vars = Vec::new();
 
         while let Some(var) = self.tokens.expect_optional(TokenKind::TypeVar) {
-            vars.push(var);
+            vars.push(self.node(SyntaxKind::VarTyExpr, |b| {
+                b.add_token(var);
+            }));
         }
 
         let dot = match self.tokens.expect_optional(TokenKind::Dot) {
@@ -663,7 +682,7 @@ impl Parser<'_> {
         let subty = self.parse_tyexpr()?;
 
         let structuring = self.node(SyntaxKind::ForallTyExprStructuring, |b| {
-            b.add_tokens(vars);
+            b.add_nodes(vars);
         });
 
         Ok(self.node(SyntaxKind::ForallTyExpr, |b| {
