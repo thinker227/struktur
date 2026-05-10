@@ -251,7 +251,7 @@ impl Parser<'_> {
         } = self.parse_atom_expr(ExprContext::ALL)?;
 
         while let Some(ParsedExpr { expr, .. }) = self.try_parse_atom_expr(ExprContext {
-            allow_keyword: true,
+            allow_keyword: false,
             // A type annotation is specficially not allowed here in order to allow
             // `f x : T` to parse as `(f x) : T` instead of `f (x : T)`.
             allow_tyann: false,
