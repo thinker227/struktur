@@ -1,0 +1,98 @@
+use std::{cell::RefCell, fmt::Debug, rc::Rc};
+
+use slotmap::{SparseSecondaryMap, sparse_secondary::Entry};
+
+use crate::{
+    symbols::{Symbol, Symbols},
+    types::PolyType,
+};
+
+struct Raw<'a> {
+    symbols: &'a Symbols,
+    symbol_types: RefCell<SparseSecondaryMap<Symbol, PolyType>>,
+}
+
+/// A context for type-checking and inference.
+/// Keeps track of the types of symbols as well as the current forall level.
+///
+/// For ease of use, the context utilizes interior mutability for the type mapping,
+/// but *not* for the forall level.
+#[derive(Clone)]
+pub struct Context<'a> {
+    forall_level: u32,
+    raw: Rc<Raw<'a>>,
+}
+
+impl<'a> Context<'a> {
+    /// Creates a new empty context with a forall level of 0.
+    pub fn new(symbols: &'a Symbols) -> Self {
+        Self {
+            forall_level: 0,
+            raw: Rc::new(Raw {
+                symbols,
+                symbol_types: RefCell::new(SparseSecondaryMap::new()),
+            }),
+        }
+    }
+
+    /// Gets the set of symbols in the context.
+    pub fn symbols(&self) -> &'a Symbols {
+        self.raw.symbols
+    }
+
+    /// Gets the context's forall level.
+    ///
+    /// Note that this is immutable per context.
+    pub fn forall_level(&self) -> u32 {
+        self.forall_level
+    }
+
+    /// Extends the context by increasing the forall level by 1, returning a new context
+    /// (though with the same shared type mapping).
+    #[must_use = "`extend` returns a new context and does not mutate `self`"]
+    pub fn extend(&self) -> Self {
+        Self {
+            forall_level: self.forall_level + 1,
+            raw: self.raw.clone(),
+        }
+    }
+
+    /// Adds a mapping from a symbol to a type.
+    pub fn add_symbol_type(&self, symbol: Symbol, ty: PolyType) -> Result<(), AddSymbolError> {
+        let mut borrow = self.raw.symbol_types.borrow_mut();
+        let entry = borrow
+            .entry(symbol)
+            .expect("symbol should still be present in the symbol map");
+
+        match entry {
+            Entry::Occupied(_) => Err(AddSymbolError),
+            Entry::Vacant(entry) => {
+                entry.insert(ty);
+                Ok(())
+            }
+        }
+    }
+
+    /// Creates or replaces an existing mapping from a symbol to a type.
+    pub fn replace_symbol_type(&self, symbol: Symbol, ty: PolyType) {
+        let mut borrow = self.raw.symbol_types.borrow_mut();
+        borrow.insert(symbol, ty);
+    }
+
+    /// Looks up a mapping from a symbol to a type.
+    pub fn lookup_symbol_type(&self, symbol: Symbol) -> Option<PolyType> {
+        self.raw.symbol_types.borrow().get(symbol).cloned()
+    }
+}
+
+impl Debug for Context<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Context")
+            .field("forall_level", &self.forall_level)
+            .field("symbol_types", &self.raw.symbol_types)
+            .finish_non_exhaustive()
+    }
+}
+
+/// An error returned by looking up the type of something which doesn't have a registered type.
+pub struct AddSymbolError;
