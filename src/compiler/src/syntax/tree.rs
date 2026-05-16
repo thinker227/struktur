@@ -23,6 +23,7 @@ use slotmap::{SecondaryMap, SlotMap, new_key_type};
 use std::{
     fmt::{Debug, Formatter},
     hash::Hash,
+    ops::ControlFlow,
     ptr,
 };
 
@@ -232,6 +233,30 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
             token_index: 0,
         }
     }
+
+    /// Gets the descendant nodes of the node.
+    ///
+    /// The function passed to the iterator determines which nodes to continue descending into.
+    /// If the function returns [ControlFlow::Break] for a node, then the node will still be
+    /// returned from the iterator, but its descendants will not.
+    ///
+    /// Use [all_descendants](Self::all_descendants) if filtering is not necessary.
+    pub fn descendants<F: FnMut(Self) -> ControlFlow<()>>(
+        self,
+        f: F,
+    ) -> impl Iterator<Item = Self> {
+        DescendantsIter {
+            f,
+            current: self,
+            index: 0,
+            stack: Vec::new(),
+        }
+    }
+
+    /// Gets the descendant nodes of the node without any filtering.
+    pub fn all_descendants(self) -> impl Iterator<Item = Self> {
+        self.descendants(|_| ControlFlow::Continue(()))
+    }
 }
 
 impl<Kind, Token: Spanned> SyntaxNode<'_, Kind, Token> {
@@ -393,7 +418,6 @@ impl<Kind, Token> Clone for NodeOrToken<'_, Kind, Token> {
 
 impl<Kind, Token> Copy for NodeOrToken<'_, Kind, Token> {}
 
-#[derive(Debug, Clone)]
 struct ChildrenIter<'map, Kind, Token> {
     node: SyntaxNode<'map, Kind, Token>,
     node_index: usize,
@@ -428,6 +452,49 @@ impl<'map, Kind, Token> Iterator for ChildrenIter<'map, Kind, Token> {
         }
 
         None
+    }
+}
+
+struct DescendantsIter<'map, Kind, Token, F> {
+    f: F,
+    current: SyntaxNode<'map, Kind, Token>,
+    index: usize,
+    stack: Vec<(SyntaxNode<'map, Kind, Token>, usize)>,
+}
+
+impl<'map, Kind, Token, F> Iterator for DescendantsIter<'map, Kind, Token, F>
+where
+    F: FnMut(SyntaxNode<'map, Kind, Token>) -> ControlFlow<()>,
+{
+    type Item = SyntaxNode<'map, Kind, Token>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = if let Some(node) = self.current.node(self.index) {
+            self.index += 1;
+            node
+        } else {
+            'a: {
+                while let Some((node, index)) = self.stack.pop() {
+                    if let Some(next) = node.node(index) {
+                        self.index = index;
+                        break 'a next;
+                    }
+                }
+
+                return None;
+            }
+        };
+
+        match (self.f)(node) {
+            ControlFlow::Continue(()) => {
+                self.stack.push((self.current, self.index));
+                self.current = node;
+                self.index = 0;
+            }
+            ControlFlow::Break(()) => {}
+        }
+
+        Some(node)
     }
 }
 
@@ -619,6 +686,51 @@ mod tests {
         assert_eq!(*children.next().unwrap().into_node().unwrap().kind(), 5);
         assert_eq!(*children.next().unwrap().into_token().unwrap(), 6);
         assert_eq!(children.next(), None);
+    }
+
+    #[test]
+    fn descendants() {
+        let (mut map, _, ctx) = test_prelude!();
+
+        let node = make_node!(
+            1;
+            node make_node!(
+                2;
+                node make_node!(
+                    0;
+                    node make_node!(
+                        0;
+                        token ()
+                    ).finish(&mut map, ctx)
+                ).finish(&mut map, ctx),
+                node make_node!(
+                    3;
+                    token ()
+                ).finish(&mut map, ctx)
+            ).finish(&mut map, ctx),
+            node make_node!(
+                0;
+                node make_node!(
+                    0;
+                    token ()
+                ).finish(&mut map, ctx)
+            ).finish(&mut map, ctx)
+        )
+        .finish(&mut map, ctx);
+
+        let mut descendants = node.descendants(|node| {
+            if *node.kind() == 0u32 {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+
+        assert_eq!(descendants.next().unwrap().kind(), &2);
+        assert_eq!(descendants.next().unwrap().kind(), &0);
+        assert_eq!(descendants.next().unwrap().kind(), &3);
+        assert_eq!(descendants.next().unwrap().kind(), &0);
+        assert_eq!(descendants.next(), None);
     }
 
     #[test]
