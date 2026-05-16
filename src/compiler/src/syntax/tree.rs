@@ -22,6 +22,7 @@ use serde::{Serialize, Serializer, ser::SerializeStruct as _};
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 use std::{
     fmt::{Debug, Formatter},
+    hash::Hash,
     ptr,
 };
 
@@ -263,6 +264,13 @@ impl<Kind: Serialize, Token: Serialize> Serialize for SyntaxNode<'_, Kind, Token
 impl<Kind, Token> From<SyntaxNode<'_, Kind, Token>> for NodeId {
     fn from(value: SyntaxNode<'_, Kind, Token>) -> Self {
         value.id
+    }
+}
+
+impl<Kind, Token> Hash for SyntaxNode<'_, Kind, Token> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ptr::hash(self.map, state);
+        self.id.hash(state);
     }
 }
 

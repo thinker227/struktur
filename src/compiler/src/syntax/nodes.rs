@@ -12,7 +12,7 @@ use crate::text::{Spanned, TextLocation, TextSpan};
 
 macro_rules! node {
     ($name:ident, $kind:expr) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         #[repr(transparent)]
         pub struct $name<'map>(SyntaxNode<'map>);
 
@@ -48,7 +48,7 @@ macro_rules! node {
 
 macro_rules! enum_node {
     ($name:ident { $($var_name:ident($ty:ident, $kind:pat)),* }) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub enum $name<'map> {
             $(
                 $var_name($ty<'map>)
