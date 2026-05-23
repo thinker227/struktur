@@ -5,7 +5,7 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use super::{MonoType, Ty};
+use super::MonoType as Sub;
 
 static DEBUG_ID: AtomicU32 = AtomicU32::new(0);
 
@@ -14,7 +14,7 @@ fn new_id() -> u32 {
 }
 
 struct Inner {
-    ty: OnceCell<Ty<MonoType>>,
+    ty: OnceCell<Sub>,
     level: AtomicU32,
     debug_id: u32,
 }
@@ -56,7 +56,7 @@ impl MetaVar {
     }
 
     /// Gets the substitution of the variable, or [None] if the variable has not been substituted.
-    pub fn get_sub(&self) -> Option<&Ty<MonoType>> {
+    pub fn get_sub(&self) -> Option<&Sub> {
         self.0.ty.get()
     }
 
@@ -81,7 +81,7 @@ impl MetaVar {
     /// Substitutes the variable for another type.
     ///
     /// Returns `false` if the type had already been substituted, otherwise `true`.
-    pub fn sub(&self, ty: Ty<MonoType>) -> bool {
+    pub fn sub(&self, ty: Sub) -> bool {
         self.0.ty.set(ty).is_ok()
     }
 
@@ -122,8 +122,8 @@ impl PartialEq for MetaVar {
 
 impl Eq for MetaVar {}
 
-impl PartialEq<Ty<MonoType>> for MetaVar {
-    fn eq(&self, other: &Ty<MonoType>) -> bool {
+impl PartialEq<Sub> for MetaVar {
+    fn eq(&self, other: &Sub) -> bool {
         match self.get_sub() {
             Some(ty) => ty == other,
             None => false,
