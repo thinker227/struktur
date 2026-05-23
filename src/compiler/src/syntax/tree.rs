@@ -52,10 +52,18 @@ impl<Kind, Token> Nodes<Kind, Token> {
     ///
     /// # Panics
     /// Panics if the node ID is not related to this specific node map.
-    pub fn get(&self, id: NodeId) -> &RawNode<Kind, Token> {
+    pub fn raw(&self, id: NodeId) -> &RawNode<Kind, Token> {
         self.map
             .get(id)
             .expect("node ID should be present in the node map")
+    }
+
+    /// Gets the syntax node for a given node ID.
+    ///
+    /// # Panics
+    /// Panics if the node ID is not related to this specific node map.
+    pub fn get(&self, id: NodeId) -> SyntaxNode<'_, Kind, Token> {
+        SyntaxNode::new(self, id)
     }
 
     /// Gets the source context for a given node ID.
@@ -135,7 +143,7 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
 
     /// Gets a reference to the inner [RawNode].
     pub fn get(self) -> &'map RawNode<Kind, Token> {
-        self.map.get(self.id)
+        self.map.raw(self.id)
     }
 
     /// Gets the [SourceContext] for the node.
