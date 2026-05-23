@@ -3,13 +3,18 @@ use std::{cell::RefCell, fmt::Debug, rc::Rc};
 use slotmap::{SparseSecondaryMap, sparse_secondary::Entry};
 
 use crate::{
+    diagnostic::Diagnostic,
     symbols::{Symbol, Symbols},
-    types::PolyType,
+    types::{MetaVar, PolyType},
 };
 
+type Types = SparseSecondaryMap<Symbol, PolyType>;
+
+#[derive(Clone)]
 struct Raw<'a> {
     symbols: &'a Symbols,
-    symbol_types: RefCell<SparseSecondaryMap<Symbol, PolyType>>,
+    symbol_types: RefCell<Types>,
+    diagnostics: RefCell<Vec<Diagnostic>>,
 }
 
 /// A context for type-checking and inference.
@@ -31,6 +36,7 @@ impl<'a> Context<'a> {
             raw: Rc::new(Raw {
                 symbols,
                 symbol_types: RefCell::new(SparseSecondaryMap::new()),
+                diagnostics: RefCell::new(Vec::new()),
             }),
         }
     }
@@ -45,6 +51,11 @@ impl<'a> Context<'a> {
     /// Note that this is immutable per context.
     pub fn forall_level(&self) -> u32 {
         self.forall_level
+    }
+
+    /// Creates a fresh unification variable with the context's forall level.
+    pub fn fresh_meta(&self) -> MetaVar {
+        MetaVar::new(self.forall_level)
     }
 
     /// Extends the context by increasing the forall level by 1, returning a new context
@@ -83,6 +94,22 @@ impl<'a> Context<'a> {
     pub fn lookup_symbol_type(&self, symbol: Symbol) -> Option<PolyType> {
         self.raw.symbol_types.borrow().get(symbol).cloned()
     }
+
+    /// Adds a diagnostic.
+    pub fn add_diagnostic(&self, diagnostic: Diagnostic) {
+        let mut borrow = self.raw.diagnostics.borrow_mut();
+        borrow.push(diagnostic);
+    }
+
+    /// Gets the accumulated contents of the context.
+    ///
+    /// Since the context internally uses reference-counting, this method attempts to unwrap the [Rc],
+    /// assuming there is only one reference to it. If there is more than one reference to the context,
+    /// this method returns [None].
+    pub fn into_contents(self) -> Option<(Types, Vec<Diagnostic>)> {
+        Rc::into_inner(self.raw)
+            .map(|raw| (raw.symbol_types.into_inner(), raw.diagnostics.into_inner()))
+    }
 }
 
 impl Debug for Context<'_> {
@@ -95,4 +122,5 @@ impl Debug for Context<'_> {
 }
 
 /// An error returned by looking up the type of something which doesn't have a registered type.
+#[derive(Debug, Clone)]
 pub struct AddSymbolError;
