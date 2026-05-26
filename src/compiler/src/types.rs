@@ -4,6 +4,7 @@ use crate::{symbols::Symbol, syntax::NodeId};
 
 pub use check::type_check;
 pub use meta_var::MetaVar;
+use serde::Serialize;
 
 mod check;
 mod meta_var;
@@ -20,7 +21,7 @@ pub enum PolyType {
 /// A regular non-quantified type.
 ///
 /// This defines the type of expressions and variables.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum MonoType {
     /// A primitive.
     Primitive(Ty<PrimitiveType>),
@@ -34,7 +35,7 @@ pub enum MonoType {
 }
 
 /// A primitive type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum PrimitiveType {
     Unit,
     Int,
@@ -43,7 +44,7 @@ pub enum PrimitiveType {
 }
 
 /// The type of a function.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FunctionType {
     /// The function's parameter/input type.
     pub param: MonoType,
@@ -54,7 +55,7 @@ pub struct FunctionType {
 /// A type quantified/generalized over a set of type variables.
 ///
 /// *For all types t0...tn, the generalized type holds.*
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ForallType {
     /// The type variables being quantified.
     pub vars: Vec<TypeVar>,
@@ -67,7 +68,7 @@ pub struct ForallType {
 /// Not to be confused with [MetaVar]. [TypeVar] is a variable in the finalized typing of the program,
 /// while [MetaVar] is a variable which only exists during type inference and which can be freely
 /// substituted for other types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub struct TypeVar {
     /// The type variable *symbol* the type is the *type* version of.
     ///
@@ -112,7 +113,7 @@ impl From<Ty<ForallType>> for PolyType {
 }
 
 /// A type with extra data attached.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Ty<T> {
     /// The type.
     pub ty: T,
@@ -145,7 +146,7 @@ impl<T> Ty<T> {
 /// which led to a certain type—and possibly an error—being inferred.
 ///
 /// A provenance just is a linear path through the constructions of types throughout the program.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Provenance {
     /// A specific point in the type flow of the program.
     Location(NodeId),

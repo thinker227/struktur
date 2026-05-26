@@ -5,6 +5,8 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
+use serde::Serialize;
+
 use super::MonoType as Sub;
 
 static DEBUG_ID: AtomicU32 = AtomicU32::new(0);
@@ -55,6 +57,11 @@ impl MetaVar {
         }))
     }
 
+    /// Gets a string of the debug ID.
+    fn debug_id_str(&self) -> String {
+        format!("${}", self.0.debug_id)
+    }
+
     /// Gets the substitution of the variable, or [None] if the variable has not been substituted.
     pub fn get_sub(&self) -> Option<&Sub> {
         self.0.ty.get()
@@ -96,6 +103,16 @@ impl MetaVar {
     }
 }
 
+impl Serialize for MetaVar {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if let Some(ty) = self.get_sub() {
+            ty.serialize(serializer)
+        } else {
+            serializer.serialize_str(&self.debug_id_str())
+        }
+    }
+}
+
 impl Debug for MetaVar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut tuple = f.debug_tuple("MetaVar");
@@ -103,7 +120,7 @@ impl Debug for MetaVar {
         if let Some(ty) = self.get_sub() {
             tuple.field(ty);
         } else {
-            tuple.field(&format!("${}", self.0.debug_id));
+            tuple.field(&self.debug_id_str());
         }
 
         tuple.finish()
