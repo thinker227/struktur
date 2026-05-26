@@ -7,6 +7,12 @@ use crate::{
     text::{Spanned as _, TextSpan},
 };
 
+#[cfg(test)]
+use crate::{
+    sources::{SourceName, SourceProject},
+    syntax::{lex::lex, nodes::Root},
+};
+
 use super::{NodeBuilder, NodeId, Nodes, SyntaxKind, Token, TokenKind};
 
 mod errors;
@@ -21,6 +27,26 @@ pub fn parse(map: &mut Nodes, tokens: Tokens) -> Result {
         map,
     );
     parser.parse_root()
+}
+
+/// Provides a simplified interface for parsing a single string into an AST.
+#[cfg(test)]
+pub fn test_parse<'map>(map: &'map mut Nodes, text: &str) -> Result<(SourceProject, Root<'map>)> {
+    let mut sources = SourceProject::new();
+    let source = sources.add(
+        SourceName::InMemory {
+            name: "test".to_owned(),
+        },
+        text.to_owned(),
+    );
+
+    let tokens = lex(source)?;
+    let node_id = parse(map, tokens)?;
+
+    let node = SyntaxNode::new(map, node_id);
+    let root = Root::new(node).unwrap();
+
+    Ok((sources, root))
 }
 
 /// The context in which an expression is parsed.
@@ -698,37 +724,15 @@ impl Parser<'_> {
 mod tests {
     use insta::assert_yaml_snapshot;
 
-    use crate::{
-        sources::{SourceName, SourceProject},
-        syntax::{lex::lex, nodes::Root},
-    };
-
     use super::*;
-
-    fn test_parse<'map>(map: &'map mut Nodes, text: &str) -> Result<Root<'map>> {
-        let mut sources = SourceProject::new();
-        let source = sources.add(
-            SourceName::InMemory {
-                name: "test".to_owned(),
-            },
-            text.to_owned(),
-        );
-
-        let tokens = lex(source)?;
-        let node_id = parse(map, tokens)?;
-
-        let node = SyntaxNode::new(map, node_id);
-        let root = Root::new(node).unwrap();
-
-        Ok(root)
-    }
 
     #[test]
     fn simple_let_expr() {
         let mut map = Nodes::new();
 
         let text = "let x = 0";
-        let root = test_parse(&mut map, text).unwrap().raw();
+        let (_, node) = test_parse(&mut map, text).unwrap();
+        let root = node.raw();
 
         assert_yaml_snapshot!(root);
     }
