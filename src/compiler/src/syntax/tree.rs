@@ -651,7 +651,10 @@ macro_rules! make_node {
 ///   - `> *[n]`: Selects the `n`th immediate child node.
 /// - `> (k)`: Selects all immediate child nodes with kind `k`.
 ///   - `> (k)[n]`: Selects the `n`th child node with kind `k`.
+/// - `*`: Selects all descendant nodes.
 /// - `(k)`: Selects all descendant nodes with kind `k`.
+/// - `as T`: Attempts to cast the items of the iterator into `T` using `T::new` returning `Option<T>`.
+///   Must be the final clause of the selector.
 ///
 /// # Examples
 /// ```ignore
@@ -716,6 +719,14 @@ macro_rules! select_nodes {
         )
     };
 
+    // Descendants
+    ($tree:expr; * $($rest:tt)*) => {
+        select_nodes!(
+            $tree.flat_map(|x| x.all_descendants());
+            $($rest)*
+        )
+    };
+
     // Descendants with filter
     ($tree:expr; ($kind:expr) $($rest:tt)*) => {
         select_nodes!(
@@ -726,7 +737,12 @@ macro_rules! select_nodes {
         )
     };
 
-    // Exit arm
+    // Finish with cast
+    ($tree:expr; as $ty:ty) => {
+        $tree.filter_map(|x| <$ty>::new(x))
+    };
+
+    // Finish
     ($tree:expr;) => {
         $tree
     }
