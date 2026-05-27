@@ -234,7 +234,7 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
     }
 
     /// Gets the children nodes and tokens of the node.
-    pub fn children(self) -> impl Iterator<Item = NodeOrToken<'map, Kind, Token>> {
+    pub fn children(self) -> ChildrenIter<'map, Kind, Token> {
         ChildrenIter {
             node: self,
             node_index: 0,
@@ -252,7 +252,7 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
     pub fn descendants<F: FnMut(Self) -> ControlFlow<()>>(
         self,
         f: F,
-    ) -> impl Iterator<Item = Self> {
+    ) -> DescendantsIter<'map, Kind, Token, F> {
         DescendantsIter {
             f,
             current: self,
@@ -262,7 +262,7 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
     }
 
     /// Gets the descendant nodes of the node without any filtering.
-    pub fn all_descendants(self) -> impl Iterator<Item = Self> {
+    pub fn all_descendants(self) -> impl Iterator<Item = Self> + Clone {
         self.descendants(|_| ControlFlow::Continue(()))
     }
 }
@@ -426,7 +426,7 @@ impl<Kind, Token> Clone for NodeOrToken<'_, Kind, Token> {
 
 impl<Kind, Token> Copy for NodeOrToken<'_, Kind, Token> {}
 
-struct ChildrenIter<'map, Kind, Token> {
+pub struct ChildrenIter<'map, Kind, Token> {
     node: SyntaxNode<'map, Kind, Token>,
     node_index: usize,
     token_index: usize,
@@ -463,7 +463,7 @@ impl<'map, Kind, Token> Iterator for ChildrenIter<'map, Kind, Token> {
     }
 }
 
-struct DescendantsIter<'map, Kind, Token, F> {
+pub struct DescendantsIter<'map, Kind, Token, F> {
     f: F,
     current: SyntaxNode<'map, Kind, Token>,
     index: usize,
@@ -503,6 +503,17 @@ where
         }
 
         Some(node)
+    }
+}
+
+impl<Kind, Token, F: Clone> Clone for DescendantsIter<'_, Kind, Token, F> {
+    fn clone(&self) -> Self {
+        Self {
+            f: self.f.clone(),
+            current: self.current,
+            index: self.index,
+            stack: self.stack.clone(),
+        }
     }
 }
 
