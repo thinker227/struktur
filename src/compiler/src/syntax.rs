@@ -13,6 +13,7 @@ use serde::Serialize;
 pub mod lex;
 pub mod nodes;
 pub mod parse;
+pub mod selector;
 pub mod tree;
 
 pub use tree::NodeId;
