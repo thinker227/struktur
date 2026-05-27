@@ -12,7 +12,7 @@ mod meta_var;
 /// A type that is either a regular (mono-) type, or a type quantified over a set of type variables.
 ///
 /// Only top-level bindings have a [PolyType] as their type.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum PolyType {
     Forall(Ty<ForallType>),
     Type(MonoType),
