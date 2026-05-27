@@ -17,6 +17,8 @@ macro_rules! node {
         pub struct $name<'map>(SyntaxNode<'map>);
 
         impl<'map> $name<'map> {
+            pub const KIND: SyntaxKind = $kind;
+
             pub fn new(node: SyntaxNode<'map>) -> Option<Self> {
                 if *node.kind() == $kind {
                     Some(Self(node))

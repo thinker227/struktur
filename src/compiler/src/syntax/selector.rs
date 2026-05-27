@@ -8,8 +8,6 @@
 ///   - `> (k)[n]`: Selects the `n`th child node with kind `k`.
 /// - `*`: Selects all descendant nodes.
 /// - `(k)`: Selects all descendant nodes with kind `k`.
-/// - `as T`: Attempts to cast the items of the iterator into `T` using `T::new` returning `Option<T>`.
-///   Must be the final clause of the selector.
 ///
 /// # Examples
 /// ```ignore
@@ -25,7 +23,8 @@
 /// // select the first child of every immediate child
 /// select_nodes!(node => > *[0])
 /// ```
-/// Due to the syntax limitations of declarative macros, kind clauses have to be enclosed in parentheses.
+///
+/// Due to the syntax limitations of declarative macros, kind clauses sometimes have to be enclosed in parentheses.
 #[macro_export]
 macro_rules! select_nodes {
     // Entry arm (nicer surface syntax)
@@ -52,24 +51,40 @@ macro_rules! select_nodes {
         )
     };
 
+    // Terminating immediate child indexing with filter
+    ($tree:expr; > $kind:ty [$index:expr]) => {
+        $tree.filter_map(|x| x
+            .nodes()
+            .filter_map(<$kind>::new)
+            .nth($index)
+        )
+    };
+
     // Immediate child indexing with filter
-    ($tree:expr; > ($kind:expr) [$index:expr] $($rest:tt)*) => {
+    ($tree:expr; > ($kind:ty) [$index:expr] $($rest:tt)*) => {
         select_nodes!(
             $tree.filter_map(|x| x
                 .nodes()
-                .filter(|x| x.kind() == &$kind)
+                .filter(|x| x.kind() == &(<$kind>::KIND))
                 .nth($index)
             );
             $($rest)*
         )
     };
 
+    // Terminating immediate child with filter
+    ($tree:expr; > $kind:ty) => {
+        $tree
+            .flat_map(|x| x.nodes())
+            .filter_map(<$kind>::new)
+    };
+
     // Immediate children with filter
-    ($tree:expr; > ($kind:expr) $($rest:tt)*) => {
+    ($tree:expr; > ($kind:ty) $($rest:tt)*) => {
         select_nodes!(
             $tree
                 .flat_map(|x| x.nodes())
-                .filter(|x| x.kind() == &$kind);
+                .filter(|x| x.kind() == &(<$kind>::KIND));
             $($rest)*
         )
     };
@@ -82,19 +97,21 @@ macro_rules! select_nodes {
         )
     };
 
+    // Terminating descendants with filter
+    ($tree:expr; $kind:ty) => {
+        $tree
+            .flat_map(|x| x.all_descendants())
+            .filter_map(<$kind>::new)
+    };
+
     // Descendants with filter
-    ($tree:expr; ($kind:expr) $($rest:tt)*) => {
+    ($tree:expr; ($kind:ty) $($rest:tt)*) => {
         select_nodes!(
             $tree
                 .flat_map(|x| x.all_descendants())
-                .filter(|x| x.kind() == &$kind);
+                .filter(|x| x.kind() == &(<$kind>::KIND));
             $($rest)*
         )
-    };
-
-    // Finish with cast
-    ($tree:expr; as $ty:ty) => {
-        $tree.filter_map(|x| <$ty>::new(x))
     };
 
     // Finish
