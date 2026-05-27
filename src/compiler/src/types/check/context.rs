@@ -1,4 +1,9 @@
-use std::{cell::RefCell, fmt::Debug, rc::Rc};
+use std::{
+    cell::RefCell,
+    fmt::Debug,
+    rc::Rc,
+    sync::atomic::{AtomicU32, Ordering},
+};
 
 use slotmap::{SparseSecondaryMap, sparse_secondary::Entry};
 
@@ -10,11 +15,11 @@ use crate::{
 
 type Types = SparseSecondaryMap<Symbol, PolyType>;
 
-#[derive(Clone)]
 struct Raw<'a> {
     symbols: &'a Symbols,
     symbol_types: RefCell<Types>,
     diagnostics: RefCell<Vec<Diagnostic>>,
+    meta_var_id: AtomicU32,
 }
 
 /// A context for type-checking and inference.
@@ -37,6 +42,7 @@ impl<'a> Context<'a> {
                 symbols,
                 symbol_types: RefCell::new(SparseSecondaryMap::new()),
                 diagnostics: RefCell::new(Vec::new()),
+                meta_var_id: AtomicU32::new(0),
             }),
         }
     }
@@ -55,7 +61,10 @@ impl<'a> Context<'a> {
 
     /// Creates a fresh unification variable with the context's forall level.
     pub fn fresh_meta(&self) -> MetaVar {
-        MetaVar::new(self.forall_level)
+        MetaVar::new(
+            self.forall_level,
+            self.raw.meta_var_id.fetch_add(1, Ordering::Relaxed),
+        )
     }
 
     /// Extends the context by increasing the forall level by 1, returning a new context

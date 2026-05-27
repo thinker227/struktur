@@ -1,24 +1,21 @@
 use std::{
     cell::OnceCell,
-    fmt::Debug,
+    fmt::{Debug, Display},
     rc::Rc,
     sync::atomic::{AtomicU32, Ordering},
 };
 
 use serde::Serialize;
 
+use crate::types::excel_column_name;
+
 use super::MonoType as Sub;
 
-static DEBUG_ID: AtomicU32 = AtomicU32::new(0);
-
-fn new_id() -> u32 {
-    DEBUG_ID.fetch_add(1, Ordering::Relaxed)
-}
-
+#[derive(Debug)]
 struct Inner {
     ty: OnceCell<Sub>,
     level: AtomicU32,
-    debug_id: u32,
+    display_id: u32,
 }
 
 /// A type variable used during unification, more commonly referred to as a *unification variable*.
@@ -32,9 +29,10 @@ struct Inner {
 /// A variable's level can only ever be *lowered*, never raised.
 /// This is used to properly allow eventual unsubsituted variables to be generalized into forall quantifiers.
 ///
-/// Unification variables additionally contain an internal debug ID represented as a number which is used to
-/// distinguish variables from each other for debugging purposes. This ID, while consistent for instances of the same variable,
-/// does not have any semantic significance; it does not participate in equality relations.
+/// Unification variables additionally contain a *display ID* represented as a number which is used to
+/// distinguish variables from each other for display- and serialization purposes. While the implementation of [PartialEq]
+/// does *not* rely on this ID, care should still be taken to ensure that the ID is unique among unification variables
+/// that might be displayed or serialized as part of the same set of types (for instance in tests).
 ///
 /// Unification variables utilize reference counting and interior mutability in order to allow
 /// variables to be shared across multiple types while still refering to the same variable.
@@ -49,17 +47,12 @@ pub struct MetaVar(Rc<Inner>);
 impl MetaVar {
     /// Creates a fresh unification variable.
     #[allow(clippy::new_without_default)]
-    pub fn new(level: u32) -> Self {
+    pub fn new(level: u32, display_id: u32) -> Self {
         Self(Rc::new(Inner {
             ty: OnceCell::new(),
             level: AtomicU32::new(level),
-            debug_id: new_id(),
+            display_id,
         }))
-    }
-
-    /// Gets a string of the debug ID.
-    fn debug_id_str(&self) -> String {
-        format!("${}", self.0.debug_id)
     }
 
     /// Gets the substitution of the variable, or [None] if the variable has not been substituted.
@@ -70,6 +63,11 @@ impl MetaVar {
     /// Gets the level of the variable.
     pub fn level(&self) -> u32 {
         self.0.level.load(Ordering::Relaxed)
+    }
+
+    /// Gets the display ID of the variable.
+    pub fn display_id(&self) -> u32 {
+        self.0.display_id
     }
 
     /// Tries to lower the level of the variable.
@@ -94,12 +92,18 @@ impl MetaVar {
 
     /// Clones the variable by creating a fresh variable with the same level and substitution (if any),
     /// but which is a distinct variable.
-    pub fn inner_clone(&self) -> Self {
+    pub fn inner_clone(&self, display_id: u32) -> Self {
         Self(Rc::new(Inner {
             ty: self.0.ty.clone(),
             level: AtomicU32::new(self.level()),
-            debug_id: new_id(),
+            display_id,
         }))
+    }
+}
+
+impl Display for MetaVar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "${}", excel_column_name(self.0.display_id as usize))
     }
 }
 
@@ -108,22 +112,18 @@ impl Serialize for MetaVar {
         if let Some(ty) = self.get_sub() {
             ty.serialize(serializer)
         } else {
-            serializer.serialize_str(&self.debug_id_str())
+            serializer.serialize_str(&self.to_string())
         }
     }
 }
 
 impl Debug for MetaVar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut tuple = f.debug_tuple("MetaVar");
-
-        if let Some(ty) = self.get_sub() {
-            tuple.field(ty);
-        } else {
-            tuple.field(&self.debug_id_str());
-        }
-
-        tuple.finish()
+        f.debug_struct("MetaVar")
+            .field("ty", &self.0.ty)
+            .field("level", &self.0.level)
+            .field("display_id", &self.0.display_id)
+            .finish()
     }
 }
 
