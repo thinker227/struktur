@@ -43,6 +43,12 @@ macro_rules! node {
                 self.raw().span()
             }
         }
+
+        impl From<$name<'_>> for NodeId {
+            fn from(value: $name<'_>) -> Self {
+                value.id()
+            }
+        }
     };
 }
 
@@ -85,6 +91,12 @@ macro_rules! enum_node {
         impl Spanned for $name<'_> {
             fn span(&self) -> TextSpan {
                 self.raw().span()
+            }
+        }
+
+        impl From<$name<'_>> for NodeId {
+            fn from(value: $name<'_>) -> Self {
+                value.id()
             }
         }
     };

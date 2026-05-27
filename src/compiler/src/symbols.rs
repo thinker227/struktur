@@ -118,8 +118,8 @@ impl Symbols {
     }
 
     /// Gets the symbol bound to a node.
-    pub fn bound(&self, node: NodeId) -> Option<&SymbolData> {
-        self.bound.get(node).map(|symbol| self.get(*symbol))
+    pub fn bound(&self, node: impl Into<NodeId>) -> Option<&SymbolData> {
+        self.bound.get(node.into()).map(|symbol| self.get(*symbol))
     }
 }
 

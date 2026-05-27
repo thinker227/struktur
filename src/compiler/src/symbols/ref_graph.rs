@@ -67,12 +67,12 @@ fn reference_graph<'a>(
     let mut binding_graph_nodes = HashMap::new();
 
     for binding in bindings.clone() {
-        let symbol = symbols.bound(binding.id()).unwrap().key();
+        let symbol = symbols.bound(binding).unwrap().key();
         binding_graph_nodes.insert(symbol, graph.add_node(symbol));
     }
 
     for binding in bindings {
-        let symbol = symbols.bound(binding.id()).unwrap().key();
+        let symbol = symbols.bound(binding).unwrap().key();
         let mut make = MakeGraph {
             symbols,
             graph: &mut graph,
@@ -99,7 +99,7 @@ impl MakeGraph<'_> {
         // See module docs for what these rules are.
 
         if let Some(var) = VarExpr::new(node) {
-            let symbol = self.symbols.bound(var.id()).unwrap().key();
+            let symbol = self.symbols.bound(var).unwrap().key();
             if let Some(var_node) = self.bindings.get(&symbol) {
                 self.graph
                     .add_edge(self.binding_node, *var_node, var.location());
