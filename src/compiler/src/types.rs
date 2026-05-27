@@ -180,3 +180,41 @@ impl Provenance {
         }
     }
 }
+
+/// Converts a number into a base-26 string using lowercase letters a-z.
+///
+/// Mainly used for displaying [TypeVar] and [MetaVar].
+///
+/// # Examples
+/// ```
+/// # use struktur::types::excel_column_name;
+/// assert_eq!(&excel_column_name(0), "a");
+/// assert_eq!(&excel_column_name(1), "b");
+/// assert_eq!(&excel_column_name(2), "c");
+/// // ...
+/// assert_eq!(&excel_column_name(24), "y");
+/// assert_eq!(&excel_column_name(25), "z");
+/// assert_eq!(&excel_column_name(26), "aa");
+/// assert_eq!(&excel_column_name(27), "ab");
+/// // ...
+/// assert_eq!(&excel_column_name(51), "az");
+/// assert_eq!(&excel_column_name(52), "ba");
+/// // ...
+/// assert_eq!(&excel_column_name(700), "zy");
+/// assert_eq!(&excel_column_name(701), "zz");
+/// assert_eq!(&excel_column_name(702), "aaa");
+/// assert_eq!(&excel_column_name(703), "aab");
+/// ```
+pub fn excel_column_name(mut index: usize) -> String {
+    let mut result = String::new();
+    index += 1;
+
+    while index > 0 {
+        let m = (index - 1) % 26;
+        let c = char::from_u32('a' as u32 + m as u32).unwrap();
+        result.insert(0, c);
+        index = (index - m) / 26;
+    }
+
+    result
+}
