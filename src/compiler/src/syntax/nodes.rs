@@ -44,6 +44,12 @@ macro_rules! node {
             }
         }
 
+        impl<'map> From<$name<'map>> for SyntaxNode<'map> {
+            fn from(value: $name<'map>) -> Self {
+                value.raw()
+            }
+        }
+
         impl From<$name<'_>> for NodeId {
             fn from(value: $name<'_>) -> Self {
                 value.id()
@@ -91,6 +97,12 @@ macro_rules! enum_node {
         impl Spanned for $name<'_> {
             fn span(&self) -> TextSpan {
                 self.raw().span()
+            }
+        }
+
+        impl<'map> From<$name<'map>> for SyntaxNode<'map> {
+            fn from(value: $name<'map>) -> Self {
+                value.raw()
             }
         }
 

@@ -673,7 +673,7 @@ macro_rules! select_nodes {
     // Entry arm (nicer surface syntax)
     ($tree:expr => $($selector:tt)*) => {
         select_nodes!(
-            std::iter::once($tree);
+            ::std::iter::once($crate::syntax::tree::SyntaxNode::from($tree));
             $($selector)*
         )
     };
