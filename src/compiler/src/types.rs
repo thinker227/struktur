@@ -148,10 +148,14 @@ impl<T> Ty<T> {
 /// A provenance just is a linear path through the constructions of types throughout the program.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Provenance {
-    /// A specific point in the type flow of the program.
-    Location(NodeId),
     /// A path through several provenances.
     Path(Vec<Provenance>),
+    /// Points to a type annotation.
+    Annotation(NodeId),
+    /// Points to a literal expression.
+    Literal(NodeId),
+    /// Points to the condition of an if-else expression.
+    IfCondition(NodeId),
     /// The parameter type of a function.
     FunctionParam(Box<Provenance>),
     /// The return type of a function.

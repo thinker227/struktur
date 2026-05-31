@@ -85,29 +85,29 @@ fn generate_type(ctx: &Context, tyexpr: TyExpr) -> PolyType {
     match tyexpr {
         TyExpr::Unit(tyexpr) => PolyType::Type(MonoType::Primitive(Ty {
             ty: PrimitiveType::Unit,
-            provenance: Provenance::Location(tyexpr.id()),
+            provenance: Provenance::Annotation(tyexpr.id()),
         })),
 
         TyExpr::Int(tyexpr) => PolyType::Type(MonoType::Primitive(Ty {
             ty: PrimitiveType::Int,
-            provenance: Provenance::Location(tyexpr.id()),
+            provenance: Provenance::Annotation(tyexpr.id()),
         })),
 
         TyExpr::Bool(tyexpr) => PolyType::Type(MonoType::Primitive(Ty {
             ty: PrimitiveType::Bool,
-            provenance: Provenance::Location(tyexpr.id()),
+            provenance: Provenance::Annotation(tyexpr.id()),
         })),
 
         TyExpr::String(tyexpr) => PolyType::Type(MonoType::Primitive(Ty {
             ty: PrimitiveType::String,
-            provenance: Provenance::Location(tyexpr.id()),
+            provenance: Provenance::Annotation(tyexpr.id()),
         })),
 
         TyExpr::Var(var) => {
             let symbol = ctx.symbols().bound(var).unwrap().key();
             PolyType::Type(MonoType::Var(Ty {
                 ty: TypeVar { symbol },
-                provenance: Provenance::Location(var.id()),
+                provenance: Provenance::Annotation(var.id()),
             }))
         }
 
@@ -117,7 +117,7 @@ fn generate_type(ctx: &Context, tyexpr: TyExpr) -> PolyType {
 
             PolyType::Type(MonoType::Function(Ty {
                 ty: Box::new(FunctionType { param, ret }),
-                provenance: Provenance::Location(function.id()),
+                provenance: Provenance::Annotation(function.id()),
             }))
         }
 
@@ -140,7 +140,7 @@ fn generate_type(ctx: &Context, tyexpr: TyExpr) -> PolyType {
 
             PolyType::Forall(Ty {
                 ty: forall,
-                provenance: Provenance::Location(forall_expr.id()),
+                provenance: Provenance::Annotation(forall_expr.id()),
             })
         }
 
