@@ -14,6 +14,7 @@ pub type ReportBuilder = ariadne::ReportBuilder<'static, TextLocation>;
 pub enum Category {
     Parse,
     Resolve,
+    TypeCheck,
 }
 
 impl Display for Category {
@@ -21,6 +22,7 @@ impl Display for Category {
         match self {
             Category::Parse => write!(f, "PARSE"),
             Category::Resolve => write!(f, "RESOLVE"),
+            Category::TypeCheck => write!(f, "TYCHK"),
         }
     }
 }
