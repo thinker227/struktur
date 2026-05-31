@@ -1,6 +1,8 @@
 use std::{
     cell::OnceCell,
     fmt::{Debug, Display},
+    hash::Hash,
+    ptr,
     rc::Rc,
     sync::atomic::{AtomicU32, Ordering},
 };
@@ -124,6 +126,12 @@ impl Debug for MetaVar {
             .field("level", &self.0.level)
             .field("display_id", &self.0.display_id)
             .finish()
+    }
+}
+
+impl Hash for MetaVar {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ptr::hash(Rc::as_ptr(&self.0), state);
     }
 }
 
