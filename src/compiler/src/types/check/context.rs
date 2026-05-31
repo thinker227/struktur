@@ -1,8 +1,7 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     fmt::Debug,
     rc::Rc,
-    sync::atomic::{AtomicU32, Ordering},
 };
 
 use slotmap::{SparseSecondaryMap, sparse_secondary::Entry};
@@ -10,7 +9,7 @@ use slotmap::{SparseSecondaryMap, sparse_secondary::Entry};
 use crate::{
     diagnostic::Diagnostic,
     symbols::{Symbol, Symbols},
-    types::{MetaVar, PolyType},
+    types::{MetaVar, PolyType, TypeVar},
 };
 
 type Types = SparseSecondaryMap<Symbol, PolyType>;
@@ -19,7 +18,8 @@ struct Raw<'a> {
     symbols: &'a Symbols,
     symbol_types: RefCell<Types>,
     diagnostics: RefCell<Vec<Diagnostic>>,
-    meta_var_id: AtomicU32,
+    meta_var_id: Cell<u32>,
+    inferred_type_var_id: Cell<usize>,
 }
 
 /// A context for type-checking and inference.
@@ -42,7 +42,8 @@ impl<'a> Context<'a> {
                 symbols,
                 symbol_types: RefCell::new(SparseSecondaryMap::new()),
                 diagnostics: RefCell::new(Vec::new()),
-                meta_var_id: AtomicU32::new(0),
+                meta_var_id: Cell::new(0),
+                inferred_type_var_id: Cell::new(0),
             }),
         }
     }
@@ -61,10 +62,18 @@ impl<'a> Context<'a> {
 
     /// Creates a fresh unification variable with the context's forall level.
     pub fn fresh_meta(&self) -> MetaVar {
-        MetaVar::new(
-            self.forall_level,
-            self.raw.meta_var_id.fetch_add(1, Ordering::Relaxed),
-        )
+        let id = self.raw.meta_var_id.get();
+        self.raw.meta_var_id.set(id + 1);
+
+        MetaVar::new(self.forall_level, id)
+    }
+
+    /// Creates a fresh inferred type variable.
+    pub fn fresh_inferred_var(&self) -> TypeVar {
+        let id = self.raw.inferred_type_var_id.get();
+        self.raw.inferred_type_var_id.set(id + 1);
+
+        TypeVar::Inferred(id)
     }
 
     /// Extends the context by increasing the forall level by 1, returning a new context

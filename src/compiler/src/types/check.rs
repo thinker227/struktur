@@ -106,7 +106,7 @@ fn generate_type(ctx: &Context, tyexpr: TyExpr) -> PolyType {
         TyExpr::Var(var) => {
             let symbol = ctx.symbols().bound(var).unwrap().key();
             PolyType::Type(MonoType::Var(Ty {
-                ty: TypeVar { symbol },
+                ty: TypeVar::Declared(symbol),
                 provenance: Provenance::Annotation(var.id()),
             }))
         }
@@ -125,7 +125,7 @@ fn generate_type(ctx: &Context, tyexpr: TyExpr) -> PolyType {
             let vars = forall_expr
                 .vars()
                 .map(|var_expr| ctx.symbols().bound(var_expr).unwrap().key())
-                .map(|symbol| TypeVar { symbol });
+                .map(TypeVar::Declared);
 
             let generalized = prohibit_forall(ctx, generate_type(ctx, forall_expr.subty()));
 

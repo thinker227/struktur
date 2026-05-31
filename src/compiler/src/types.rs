@@ -65,15 +65,38 @@ pub struct ForallType {
 
 /// A type variable introduced by a [ForallType].
 ///
+/// Type variables may either be explicitly declared (i.e. through a `forall 'a. t` type annotation)
+/// or inferred (i.e. by being a generalized unsolved unification variable).
+///
 /// Not to be confused with [MetaVar]. [TypeVar] is a variable in the finalized typing of the program,
 /// while [MetaVar] is a variable which only exists during type inference and which can be freely
 /// substituted for other types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
-pub struct TypeVar {
-    /// The type variable *symbol* the type is the *type* version of.
-    ///
-    /// I.e. this [TypeVar] is the *type* version of this type variable *[Symbol]*.
-    pub symbol: Symbol,
+pub enum TypeVar {
+    /// A variable introduced by an explicit type annotation.
+    /// The [Symbol] is that assigned to a [VarTyExpr](crate::syntax::nodes::VarTyExpr).
+    Declared(Symbol),
+    /// A variable introduced by generalizing a let-binding and turning unsolved unification variables into type variables.
+    /// The [usize] is an ID *unique per inference context*.
+    Inferred(usize),
+}
+
+impl TypeVar {
+    /// Gets the symbol of the variable, assuming it is declared.
+    pub fn symbol(&self) -> Option<Symbol> {
+        match self {
+            TypeVar::Declared(symbol) => Some(*symbol),
+            TypeVar::Inferred(_) => None,
+        }
+    }
+
+    /// Gets the inference ID of the variable, assuming it is inferred.
+    pub fn inference_id(&self) -> Option<usize> {
+        match self {
+            TypeVar::Declared(_) => None,
+            TypeVar::Inferred(id) => Some(*id),
+        }
+    }
 }
 
 impl From<Ty<PrimitiveType>> for MonoType {
