@@ -1,0 +1,28 @@
+(*
+   Notes for future syntax that is not yet implemented.
+*)
+
+item = ...
+     | typeAlias
+     | typeDef
+     ;
+
+typeAlias = 'alias' NAME TYPE_VAR* '=' type ;
+
+typeDef = 'type' NAME TYPE_VAR* '=' typeBody ;
+
+typeBody = fields                           (* Product type *)
+         | constructor ('|' constructor)*   (* Sum type *)
+         ;
+
+constructor = NAME fields? ;
+
+fields = '{' (type (';' type)*)? '}' ;
+
+pattern = ...
+        | NAME pattern*   (* Type constructor *)
+        ;
+
+type = ...
+     | NAME   (* Named type *)
+     ;
