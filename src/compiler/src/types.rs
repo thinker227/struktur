@@ -9,6 +9,7 @@ use serde::Serialize;
 
 mod check;
 mod meta_var;
+pub mod pretty_print;
 mod provenance;
 
 /// A type that is either a regular (mono-) type, or a type quantified over a set of type variables.
