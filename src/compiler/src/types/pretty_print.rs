@@ -121,6 +121,7 @@ impl PrettyPrint for MonoType {
             MonoType::Function(Ty { ty: fun, .. }) => fun.print(buf, ctx),
             MonoType::Var(Ty { ty: var, .. }) => var.print(buf, ctx),
             MonoType::Meta(var) => var.print(buf, ctx),
+            MonoType::Hole => write!(buf, "_"), // Todo: Not sure about this.
         }
     }
 }

@@ -35,6 +35,13 @@ pub enum MonoType {
     /// A unification variable.
     /// This variant should *only* be present during unification.
     Meta(MetaVar),
+    /// Represents an unsound or otherwise illegal type, usually because of a type error.
+    /// Behaves like a top *and* bottom type, unifying with everything and satisfying all type constraints,
+    /// although is technically not *part* of the type system.
+    ///
+    /// This does not carry any provenance along with it because an error
+    /// should already have been reported if this type is constructed.
+    Hole,
 }
 
 /// A primitive type.

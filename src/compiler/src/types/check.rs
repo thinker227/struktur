@@ -52,6 +52,7 @@ impl MonoType {
                 Some(sub) => sub.clone(),
                 None => meta.clone().into(),
             },
+            MonoType::Hole => MonoType::Hole,
         }
     }
 }
@@ -162,7 +163,7 @@ fn ensure_vars_used(forall: &ForallType) -> Result<(), usize> {
             MonoType::Meta(meta_var) if let Some(ty) = meta_var.get_sub() => {
                 go(ty, used);
             }
-            MonoType::Meta(_) => {}
+            MonoType::Meta(_) | MonoType::Hole => {}
         }
     }
 
