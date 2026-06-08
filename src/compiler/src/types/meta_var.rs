@@ -101,6 +101,12 @@ impl MetaVar {
             display_id,
         }))
     }
+
+    /// Determines whether another unification variable refers to the same variable as this one.
+    /// That is, whether they are the same underlying reference.
+    pub fn same_as(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
 }
 
 impl Display for MetaVar {
@@ -139,7 +145,7 @@ impl PartialEq for MetaVar {
     fn eq(&self, other: &Self) -> bool {
         match (self.get_sub(), other.get_sub()) {
             (Some(a), Some(b)) => a == b,
-            (None, None) => Rc::ptr_eq(&self.0, &other.0),
+            (None, None) => self.same_as(other),
             _ => false,
         }
     }
