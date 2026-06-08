@@ -20,10 +20,24 @@ pub enum Provenance {
     Literal(NodeId),
     /// Points to the condition of an if-else expression.
     IfCondition(NodeId),
+    /// Points to a lambda expression.
+    Lambda(NodeId),
+    /// Points to a function application expression.
+    Application(NodeId),
+    /// Points to a wildcard pattern (which, when part of a type-inferred pattern,
+    /// potentially results in a generalization for which it is the provenance of).
+    WildcardPattern(NodeId),
+    /// Points to a variable pattern. Just like [WildcardPattern](Self::WildcardPattern),
+    /// variable patterns can result in generalizations, so they have their own kind of provenance.
+    VarPattern(NodeId),
     /// The parameter type of a function.
     FunctionParam(Box<Provenance>),
     /// The return type of a function.
     FunctionRet(Box<Provenance>),
+    /// A forall that's been generalized.
+    Generalize { forall: Box<Provenance> },
+    /// A variable introduced by a forall type that's been generalized.
+    InferredVar { forall: Box<Provenance> },
 }
 
 impl Provenance {
