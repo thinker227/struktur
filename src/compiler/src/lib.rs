@@ -1,3 +1,5 @@
+#![warn(clippy::todo)]
+
 pub mod diagnostic;
 pub mod sources;
 pub mod symbols;
