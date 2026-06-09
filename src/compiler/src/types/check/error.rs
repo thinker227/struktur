@@ -9,7 +9,7 @@ use crate::{
 #[repr(u16)]
 enum TypeErrorCode {
     UnusedTypeVariable = 1,
-    ForallProhibited = 2,
+    _ForallProhibited = 2,
 }
 
 impl From<TypeErrorCode> for u16 {

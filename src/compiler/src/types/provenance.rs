@@ -24,12 +24,16 @@ pub enum Provenance {
     Lambda(NodeId),
     /// Points to a function application expression.
     Application(NodeId),
+    /// Points to a let binding that's been generalized.
+    GeneralizeLet(NodeId),
     /// Points to a wildcard pattern (which, when part of a type-inferred pattern,
     /// potentially results in a generalization for which it is the provenance of).
     WildcardPattern(NodeId),
     /// Points to a variable pattern. Just like [WildcardPattern](Self::WildcardPattern),
     /// variable patterns can result in generalizations, so they have their own kind of provenance.
     VarPattern(NodeId),
+    /// Points to a literal pattern.
+    LiteralPattern(NodeId),
     /// The parameter type of a function.
     FunctionParam(Box<Provenance>),
     /// The return type of a function.

@@ -1,3 +1,4 @@
+#![feature(deref_patterns)]
 #![warn(clippy::todo)]
 
 pub mod diagnostic;

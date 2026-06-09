@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     diagnostic::Diagnostic,
     select_nodes,
-    symbols::{Symbol, Symbols},
+    symbols::{Symbol, SymbolKind, Symbols, VariableKind},
     syntax::nodes::{Binding, Expr, Item, Pattern, Root, TyExpr, VarExpr},
     types::{
         ForallType, FunctionType, MetaVar, MonoType, PolyType, PrimitiveType, Provenance, Ty,
@@ -594,8 +594,43 @@ fn check_forall(ctx: &Context, expr: Expr, expected: &Ty<ForallType>) {
     check(ctx, expr, &expected.ty.generalized)
 }
 
-fn infer_pattern(_ctx: &Context, _pat: Pattern) -> MonoType {
-    todo!()
+/// Infers the type of a pattern.
+fn infer_pattern(ctx: &Context, pat: Pattern) -> MonoType {
+    match pat {
+        // Wildcard patterns don't suggest any type in particular, so just return a fresh type variable.
+        Pattern::Wildcard(_) => MonoType::Meta(ctx.fresh_meta()),
+
+        // Same as above with variables, they don't suggest any type in particular.
+        Pattern::Var(var) => {
+            let symbol = ctx.symbols().bound(var).unwrap().key();
+            let meta_var = ctx.fresh_meta();
+            let ty = MonoType::Meta(meta_var);
+            ctx.add_symbol_type(symbol, PolyType::Type(ty.clone()))
+                .unwrap();
+            ty
+        }
+
+        Pattern::Unit(_) => MonoType::Primitive(Ty {
+            ty: PrimitiveType::Unit,
+            provenance: Provenance::LiteralPattern(pat.id()),
+        }),
+        Pattern::Number(_) => MonoType::Primitive(Ty {
+            ty: PrimitiveType::Int,
+            provenance: Provenance::LiteralPattern(pat.id()),
+        }),
+        Pattern::Bool(_) => MonoType::Primitive(Ty {
+            ty: PrimitiveType::Bool,
+            provenance: Provenance::LiteralPattern(pat.id()),
+        }),
+
+        Pattern::TyAnn(ann) => {
+            let ty = prohibit_forall(ctx, generate_type(ctx, ann.ty_ann().ty()));
+            check_pattern(ctx, ann.pattern(), &ty);
+            ty
+        }
+
+        Pattern::Grouping(group) => infer_pattern(ctx, group.pattern()),
+    }
 }
 
 /// The inferred structure of a pattern.
@@ -603,7 +638,7 @@ enum InferredPatternStructure {
     /// The pattern is *able* to be generalized, but isn't explicitly annotated with a forall type.
     Generalizable(MetaVar, Option<Symbol>, Provenance),
     /// The pattern is explicitly annotated as a forall type.
-    Forall(ForallType),
+    Forall(Ty<ForallType>),
     /// The pattern is explicitly annotated as something other than a forall type.
     Annotated(MonoType),
     /// The pattern's says nothing explicitly about its type.
@@ -629,7 +664,7 @@ fn infer_pattern_structure(ctx: &Context, pat: Pattern) -> InferredPatternStruct
         }
 
         Pattern::TyAnn(ann) => match generate_type(ctx, ann.ty_ann().ty()) {
-            PolyType::Forall(Ty { ty: forall, .. }) => {
+            PolyType::Forall(forall) => {
                 check_pattern_forall(ctx, ann.pattern(), &forall);
                 InferredPatternStructure::Forall(forall)
             }
@@ -670,7 +705,7 @@ fn match_inferred_pattern(ctx: &Context, pat: Pattern, expr: Expr) -> PolyType {
             }
 
             if let Some(symbol) = symbol {
-                ctx.add_symbol_type(symbol, var_ty);
+                ctx.add_symbol_type(symbol, var_ty).unwrap();
             }
 
             PolyType::Type(MonoType::Meta(meta_var))
@@ -679,8 +714,9 @@ fn match_inferred_pattern(ctx: &Context, pat: Pattern, expr: Expr) -> PolyType {
         // The pattern was annotated with some type, so we have to check that the type of the value matches that.
         // Either an explicit forall...
         InferredPatternStructure::Forall(forall) => {
-            // check_forall(ctx, expr, &forall);
-            todo!()
+            check_forall(ctx, expr, &forall);
+
+            PolyType::Forall(forall)
         }
         // ... or just a normal type.
         InferredPatternStructure::Annotated(ty) => {
@@ -700,16 +736,124 @@ fn match_inferred_pattern(ctx: &Context, pat: Pattern, expr: Expr) -> PolyType {
     }
 }
 
-fn check_pattern(_ctx: &Context, _pat: Pattern, _expected: &MonoType) {
-    todo!()
+/// Checks that a given pattern matches an expected type.
+fn check_pattern(ctx: &Context, pat: Pattern, expected: &MonoType) {
+    match (pat, expected) {
+        // Everything matches a wildcard.
+        (Pattern::Wildcard(_), _) => {}
+
+        (Pattern::Var(var), _) => {
+            let symbol = ctx.symbols().bound(var).unwrap().key();
+            ctx.add_symbol_type(symbol, PolyType::Type(expected.clone()))
+                .unwrap();
+        }
+
+        (
+            Pattern::Unit(_),
+            MonoType::Primitive(Ty {
+                ty: PrimitiveType::Unit,
+                ..
+            }),
+        )
+        | (
+            Pattern::Number(_),
+            MonoType::Primitive(Ty {
+                ty: PrimitiveType::Int,
+                ..
+            }),
+        )
+        | (
+            Pattern::Bool(_),
+            MonoType::Primitive(Ty {
+                ty: PrimitiveType::Bool,
+                ..
+            }),
+        ) => {}
+
+        (Pattern::TyAnn(ann), _) => {
+            let ty = prohibit_forall(ctx, generate_type(ctx, ann.ty_ann().ty()));
+            check_pattern(ctx, ann.pattern(), &ty);
+            unify(&ty, expected, ctx.forall_level());
+        }
+
+        (Pattern::Grouping(group), _) => check_pattern(ctx, group.pattern(), expected),
+
+        _ => {
+            // Fall back on unification.
+            let ty = infer_pattern(ctx, pat);
+            unify(&ty, expected, ctx.forall_level());
+        }
+    }
 }
 
-fn check_pattern_forall(_ctx: &Context, _pat: Pattern, _expected: &ForallType) {
-    todo!()
+fn check_pattern_forall(ctx: &Context, pat: Pattern, expected: &Ty<ForallType>) {
+    match pat {
+        Pattern::Wildcard(_) => {}
+
+        Pattern::Var(var) => {
+            let symbol = ctx.symbols().bound(var).unwrap().key();
+            let forall = expected.clone();
+            ctx.add_symbol_type(symbol, PolyType::Forall(forall))
+                .unwrap();
+        }
+
+        Pattern::TyAnn(ann) => {
+            let ty = generate_type(ctx, ann.ty_ann().ty());
+
+            // Type annotations only count here if the annotated type is the exact same forall type.
+            // TODO: This needs to be structural, different foralls have technically different type variable symbols but can still be structurally equal.
+            if let PolyType::Forall(ref forall) = ty
+                && forall == expected
+            {
+            } else {
+                todo!("error");
+            }
+        }
+
+        Pattern::Grouping(group) => check_pattern_forall(ctx, group.pattern(), expected),
+
+        _ => {
+            todo!("error");
+        }
+    }
 }
 
-fn _prune(_ty: &MonoType) -> MonoType {
-    todo!()
+impl MonoType {
+    /// Prunes away all the unification variables from a type.
+    fn _prune(self) -> Self {
+        match self {
+            MonoType::Primitive(primitive) => MonoType::Primitive(primitive),
+
+            MonoType::Function(ty) => MonoType::Function(ty.map(|deref!(fun)| {
+                Box::new(FunctionType {
+                    param: fun.param._prune(),
+                    ret: fun.ret._prune(),
+                })
+            })),
+
+            MonoType::Var(var) => MonoType::Var(var),
+
+            MonoType::Meta(var) => match var.get_sub() {
+                Some(ty) => ty.clone()._prune(),
+                None => panic!("cannot prune unsubstituted unification variable {var:?}"),
+            },
+
+            MonoType::Hole => MonoType::Hole,
+        }
+    }
+}
+
+impl PolyType {
+    /// Prunes away all the unification variables from a type.
+    fn prune(self) -> Self {
+        match self {
+            PolyType::Forall(ty) => PolyType::Forall(ty.map(|forall| ForallType {
+                generalized: forall.generalized._prune(),
+                vars: forall.vars,
+            })),
+            PolyType::Type(ty) => PolyType::Type(ty._prune()),
+        }
+    }
 }
 
 /*-------------------*\
@@ -839,13 +983,44 @@ pub fn type_check(
 
             // If we can generalize the binding type then replace the type in the context for further use.
             // Otherwise, the type can just be used as-is since it doesn't contain any unsolved unification variables.
-            if let Ok(general) = generalize(&ctx, symbol, MonoType::Meta(binding_var)) {
+            if let Ok(general) = generalize(
+                &ctx,
+                Provenance::GeneralizeLet(binding.id()),
+                MonoType::Meta(binding_var),
+            ) {
                 ctx.replace_symbol_type(symbol, PolyType::Forall(general));
             }
         }
     }
 
-    ctx.into_contents().expect("there shouldn't be any additional alive references to the inference context after inference is complete")
+    let (mut types, diagnostics) = ctx.into_contents().expect("there shouldn't be any additional alive references to the inference context after inference is complete");
+
+    // Prune the types of all top-level bindings and discard the rest.
+    // Technically it's not strictly necessary to discard all the non-bindings,
+    // but it's nicer in order to not accidentally leak unification variables.
+    types.retain(|symbol, orig| {
+        let symbol = symbols.get(symbol);
+        if matches!(symbol.kind(), SymbolKind::Variable(VariableKind::Binding)) {
+            replace_with::replace_with(
+                orig,
+                || {
+                    // This *should* never happen, but we can't panic here,
+                    // so we just do a dirty eprintln to notify if this does happens
+                    // and return a dummy value.
+                    eprintln!("exceptional non-panicing print: `prune` paniced");
+                    PolyType::Type(MonoType::Hole)
+                },
+                |ty| ty.prune(),
+            );
+
+            // Only keep
+            true
+        } else {
+            false
+        }
+    });
+
+    (types, diagnostics)
 }
 
 #[cfg(test)]
@@ -866,9 +1041,9 @@ mod tests {
         symbols: &mut Symbols,
         text: &str,
     ) -> (Root<'map>, HashMap<String, PolyType>, Vec<Diagnostic>) {
-        let (sources, root, nodes) = test_parse(nodes, text).unwrap();
+        let (sources, root, _) = test_parse(nodes, text).unwrap();
         resolve_symbols(symbols, &sources, root).unwrap();
-        let (symbol_types, diagnostics) = type_check(&[root], nodes, symbols);
+        let (symbol_types, diagnostics) = type_check(&[root], symbols);
 
         // Returning a map between names and types is far more ergonomic for test code.
         let mut named_types = HashMap::new();
