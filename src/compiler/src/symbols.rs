@@ -46,11 +46,32 @@ impl From<SyntaxNode<'_>> for Declaration {
     }
 }
 
+/// Defines the kind of a symbol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolKind {
+    /// A variable introduced by either a let-expression or a top-level binding.
+    /// These are all for most intents and purposes the same kind of symbol,
+    /// but are distinguished by a sub-kind.
+    Variable(VariableKind),
+    /// A type variable.
+    TypeVar,
+}
+
+/// The sub-kind of a variable symbol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VariableKind {
+    /// The variable is bound by a top-level binding.
+    Binding,
+    /// The variable is bound by a let-expression.
+    LetExpr,
+}
+
 /// Data for a symbol.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SymbolData {
     key: Symbol,
     name: String,
+    kind: SymbolKind,
     decl: Declaration,
 }
 
@@ -63,6 +84,11 @@ impl SymbolData {
     /// Gets the name of the symbol.
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Gets the kind of the symbol.
+    pub fn kind(&self) -> SymbolKind {
+        self.kind
     }
 
     /// Gets the declaration of the symbol.
@@ -88,10 +114,18 @@ impl Symbols {
     }
 
     /// Registers a new symbol.
-    pub fn register(&mut self, name: String, decl: Declaration) -> Result<&SymbolData, Symbol> {
-        let key = self
-            .map
-            .insert_with_key(|key| SymbolData { key, name, decl });
+    pub fn register(
+        &mut self,
+        name: String,
+        kind: SymbolKind,
+        decl: Declaration,
+    ) -> Result<&SymbolData, Symbol> {
+        let key = self.map.insert_with_key(|key| SymbolData {
+            key,
+            name,
+            kind,
+            decl,
+        });
 
         match self.bound.insert(decl.node, key) {
             Some(old) => Err(old),

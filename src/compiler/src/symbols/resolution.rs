@@ -5,6 +5,7 @@ use ariadne::Label;
 use crate::{
     diagnostic::{Category, Code, Diagnostic},
     sources::SourceProject,
+    symbols::{SymbolKind, VariableKind},
     syntax::{
         NodeId,
         nodes::{Binding, Case, Expr, Item, Pattern, Root, TyExpr},
@@ -83,9 +84,14 @@ impl<'a> Resolver<'a> {
     fn register(
         &mut self,
         name: String,
+        kind: SymbolKind,
         decl: Declaration,
-        namespace: Namespace,
     ) -> Result<Symbol, Symbol> {
+        let namespace = match kind {
+            SymbolKind::Variable(_) => Namespace::Value,
+            SymbolKind::TypeVar => Namespace::TypeVar,
+        };
+
         let scope = self
             .scopes
             .last_mut()
@@ -97,7 +103,7 @@ impl<'a> Resolver<'a> {
         match spot {
             Some(symbol) => Err(*symbol),
             None => {
-                let symbol = self.symbols.register(name, decl).unwrap().key();
+                let symbol = self.symbols.register(name, kind, decl).unwrap().key();
                 *spot = Some(symbol);
                 Ok(symbol)
             }
@@ -150,11 +156,15 @@ impl Resolver<'_> {
             }
         };
 
-        self.register(name.clone(), decl, Namespace::Value)
-            .map_err(|prev| {
-                let prev_span = self.symbols.get(prev).decl().location;
-                error_duplicate_declaration(decl.location, &name, prev_span, "binding")
-            })
+        self.register(
+            name.clone(),
+            SymbolKind::Variable(VariableKind::Binding),
+            decl,
+        )
+        .map_err(|prev| {
+            let prev_span = self.symbols.get(prev).decl().location;
+            error_duplicate_declaration(decl.location, &name, prev_span, "binding")
+        })
     }
 
     fn visit_item(&mut self, item: Item) -> Result<()> {
@@ -252,11 +262,15 @@ impl Resolver<'_> {
                     location: ident.location(),
                 };
 
-                self.register(name.to_owned(), decl, Namespace::Value)
-                    .map_err(|prev| {
-                        let prev_span = self.symbols.get(prev).decl().location;
-                        error_duplicate_declaration(decl.location, name, prev_span, "variable")
-                    })?;
+                self.register(
+                    name.to_owned(),
+                    SymbolKind::Variable(VariableKind::LetExpr),
+                    decl,
+                )
+                .map_err(|prev| {
+                    let prev_span = self.symbols.get(prev).decl().location;
+                    error_duplicate_declaration(decl.location, name, prev_span, "variable")
+                })?;
             }
 
             Pattern::TyAnn(ann) => {
@@ -296,7 +310,7 @@ impl Resolver<'_> {
                         let name = &this.sources.lookup(var.location()).unwrap()[1..];
                         let decl = Declaration::from(var.raw());
 
-                        this.register(name.to_owned(), decl, Namespace::TypeVar)
+                        this.register(name.to_owned(), SymbolKind::TypeVar, decl)
                             .map_err(|prev| {
                                 let prev_span = this.symbols.get(prev).decl().location;
                                 error_duplicate_declaration(
