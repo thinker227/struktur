@@ -31,7 +31,17 @@ pub fn parse(map: &mut Nodes, tokens: Tokens) -> Result {
 
 /// Provides a simplified interface for parsing a single string into an AST.
 #[cfg(test)]
-pub fn test_parse<'map>(map: &'map mut Nodes, text: &str) -> Result<(SourceProject, Root<'map>)> {
+pub fn test_parse<'map>(
+    map: &'map mut Nodes,
+    text: &str,
+    // Note: This returns, among the source project and parsed root, a reference to
+    // the same `Nodes` that was passed in. This is because the borrow checker doesn't
+    // understand that `Root` doesn't borrow anything mutably, so if you attempt to
+    // have both the root and a mutable reference to the nodes alive at the same time
+    // then you'll hit a borrow check error. If we return an immutable references to
+    // the nodes, however, then we tell the borrow checker that even if the root borrows
+    // the nodes, the borrow isn't mutable.
+) -> Result<(SourceProject, Root<'map>, &'map Nodes)> {
     let mut sources = SourceProject::new();
     let source = sources.add(
         SourceName::InMemory {
@@ -46,7 +56,7 @@ pub fn test_parse<'map>(map: &'map mut Nodes, text: &str) -> Result<(SourceProje
     let node = SyntaxNode::new(map, node_id);
     let root = Root::new(node).unwrap();
 
-    Ok((sources, root))
+    Ok((sources, root, map))
 }
 
 /// The context in which an expression is parsed.
@@ -731,7 +741,7 @@ mod tests {
         let mut map = Nodes::new();
 
         let text = "let x = 0";
-        let (_, node) = test_parse(&mut map, text).unwrap();
+        let (_, node, map) = test_parse(&mut map, text).unwrap();
         let root = node.raw();
 
         assert_yaml_snapshot!(root);

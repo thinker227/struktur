@@ -866,9 +866,9 @@ mod tests {
         symbols: &mut Symbols,
         text: &str,
     ) -> (Root<'map>, HashMap<String, PolyType>, Vec<Diagnostic>) {
-        let (sources, root) = test_parse(nodes, text).unwrap();
+        let (sources, root, nodes) = test_parse(nodes, text).unwrap();
         resolve_symbols(symbols, &sources, root).unwrap();
-        let (symbol_types, diagnostics) = type_check(&[root], symbols);
+        let (symbol_types, diagnostics) = type_check(&[root], nodes, symbols);
 
         // Returning a map between names and types is far more ergonomic for test code.
         let mut named_types = HashMap::new();
