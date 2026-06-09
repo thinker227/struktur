@@ -29,7 +29,7 @@ pub fn resolve_symbols(symbols: &mut Symbols, sources: &SourceProject, root: Roo
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NameKind {
+enum Namespace {
     Value,
     TypeVar,
 }
@@ -41,17 +41,17 @@ struct Named {
 }
 
 impl Named {
-    pub fn select(&self, kind: NameKind) -> Option<Symbol> {
+    pub fn select(&self, kind: Namespace) -> Option<Symbol> {
         match kind {
-            NameKind::Value => self.value,
-            NameKind::TypeVar => self.type_var,
+            Namespace::Value => self.value,
+            Namespace::TypeVar => self.type_var,
         }
     }
 
-    pub fn select_mut(&mut self, kind: NameKind) -> &mut Option<Symbol> {
+    pub fn select_mut(&mut self, kind: Namespace) -> &mut Option<Symbol> {
         match kind {
-            NameKind::Value => &mut self.value,
-            NameKind::TypeVar => &mut self.type_var,
+            Namespace::Value => &mut self.value,
+            Namespace::TypeVar => &mut self.type_var,
         }
     }
 }
@@ -84,7 +84,7 @@ impl<'a> Resolver<'a> {
         &mut self,
         name: String,
         decl: Declaration,
-        kind: NameKind,
+        namespace: Namespace,
     ) -> Result<Symbol, Symbol> {
         let scope = self
             .scopes
@@ -92,7 +92,7 @@ impl<'a> Resolver<'a> {
             .expect("there should always be at least one scope");
 
         let named = scope.entry(name.clone()).or_default();
-        let spot = named.select_mut(kind);
+        let spot = named.select_mut(namespace);
 
         match spot {
             Some(symbol) => Err(*symbol),
@@ -108,7 +108,7 @@ impl<'a> Resolver<'a> {
         self.symbols.bind(node, symbol)
     }
 
-    fn lookup(&self, name: &str, kind: NameKind) -> Option<Symbol> {
+    fn lookup(&self, name: &str, kind: Namespace) -> Option<Symbol> {
         for scope in self.scopes.iter().rev() {
             if let Some(named) = scope.get(name)
                 && let Some(symbol) = named.select(kind)
@@ -150,7 +150,7 @@ impl Resolver<'_> {
             }
         };
 
-        self.register(name.clone(), decl, NameKind::Value)
+        self.register(name.clone(), decl, Namespace::Value)
             .map_err(|prev| {
                 let prev_span = self.symbols.get(prev).decl().location;
                 error_duplicate_declaration(decl.location, &name, prev_span, "binding")
@@ -184,7 +184,7 @@ impl Resolver<'_> {
             Expr::Var(var) => {
                 let name = self.sources.lookup(var.ident().location()).unwrap();
                 let symbol = self
-                    .lookup(name, NameKind::Value)
+                    .lookup(name, Namespace::Value)
                     .ok_or_else(|| error_undeclared(var.location(), name, "variable or binding"))?;
 
                 self.bind(var.id(), symbol).unwrap();
@@ -252,7 +252,7 @@ impl Resolver<'_> {
                     location: ident.location(),
                 };
 
-                self.register(name.to_owned(), decl, NameKind::Value)
+                self.register(name.to_owned(), decl, Namespace::Value)
                     .map_err(|prev| {
                         let prev_span = self.symbols.get(prev).decl().location;
                         error_duplicate_declaration(decl.location, name, prev_span, "variable")
@@ -279,7 +279,7 @@ impl Resolver<'_> {
             TyExpr::Var(var) => {
                 let name = &self.sources.lookup(var.location()).unwrap()[1..];
                 let symbol = self
-                    .lookup(name, NameKind::TypeVar)
+                    .lookup(name, Namespace::TypeVar)
                     .ok_or_else(|| error_undeclared(var.location(), name, "type variable"))?;
 
                 self.bind(var.id(), symbol).unwrap();
@@ -296,7 +296,7 @@ impl Resolver<'_> {
                         let name = &this.sources.lookup(var.location()).unwrap()[1..];
                         let decl = Declaration::from(var.raw());
 
-                        this.register(name.to_owned(), decl, NameKind::TypeVar)
+                        this.register(name.to_owned(), decl, Namespace::TypeVar)
                             .map_err(|prev| {
                                 let prev_span = this.symbols.get(prev).decl().location;
                                 error_duplicate_declaration(
