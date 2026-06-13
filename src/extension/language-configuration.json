@@ -1,18 +1,16 @@
 {
-    "comments": {
-        "lineComment": {
-            "comment": "//"
-        }
-    },
-    "brackets": [
-        ["(", ")"]
-    ],
-    "autoClosingPairs": [
-        ["(", ")"],
-        ["\"", "\""]
-    ],
-    "surroundingPairs": [
-        ["(", ")"],
-        ["\"", "\""]
-    ]
+  "comments": {
+    "lineComment": {
+      "comment": "//"
+    }
+  },
+  "brackets": [["(", ")"]],
+  "autoClosingPairs": [
+    ["(", ")"],
+    ["\"", "\""]
+  ],
+  "surroundingPairs": [
+    ["(", ")"],
+    ["\"", "\""]
+  ]
 }
