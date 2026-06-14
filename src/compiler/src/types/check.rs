@@ -46,28 +46,28 @@ enum SubTarget {
 
 impl MonoType {
     /// Substitutes type variables within the type for other types.
-    fn substitute(&self, subs: &HashMap<SubTarget, MonoType>) -> Self {
+    fn substitute(self, subs: &HashMap<SubTarget, MonoType>) -> Self {
         match self {
-            MonoType::Primitive(prim) => prim.clone().into(),
+            ty @ MonoType::Primitive(_) => ty,
 
             MonoType::Function(Ty {
                 ty: fun,
                 provenance,
             }) => MonoType::Function(Ty {
                 ty: Box::new(fun.substitute(subs)),
-                provenance: provenance.clone(),
+                provenance,
             }),
 
             MonoType::Var(var) => match subs.get(&SubTarget::Var(var.ty)) {
                 Some(t) => t.clone(),
-                None => var.clone().into(),
+                None => var.into(),
             },
 
             MonoType::Meta(meta) => match meta.get_sub() {
-                Some(sub) => sub.substitute(subs),
+                Some(sub) => sub.clone().substitute(subs),
                 None => match subs.get(&SubTarget::Meta(meta.clone())) {
-                    Some(sub) => sub.substitute(subs),
-                    None => meta.clone().into(),
+                    Some(sub) => sub.clone().substitute(subs),
+                    None => meta.into(),
                 },
             },
 
@@ -77,7 +77,7 @@ impl MonoType {
 }
 
 impl FunctionType {
-    fn substitute(&self, subs: &HashMap<SubTarget, MonoType>) -> Self {
+    fn substitute(self, subs: &HashMap<SubTarget, MonoType>) -> Self {
         Self {
             param: self.param.clone().substitute(subs),
             ret: self.ret.clone().substitute(subs),
@@ -86,13 +86,6 @@ impl FunctionType {
 }
 
 impl ForallType {
-    fn substitute(&self, subs: &HashMap<SubTarget, MonoType>) -> Self {
-        Self {
-            vars: self.vars.clone(),
-            generalized: self.generalized.substitute(subs),
-        }
-    }
-
     fn instantiate(&self, ctx: &Context) -> MonoType {
         let subs = self
             .vars
