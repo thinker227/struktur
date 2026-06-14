@@ -741,7 +741,7 @@ mod tests {
         let mut map = Nodes::new();
 
         let text = "let x = 0";
-        let (_, node, map) = test_parse(&mut map, text).unwrap();
+        let (_, node, _) = test_parse(&mut map, text).unwrap();
         let root = node.raw();
 
         assert_yaml_snapshot!(root);
