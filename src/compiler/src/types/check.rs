@@ -820,21 +820,21 @@ fn check_pattern_forall(ctx: &Context, pat: Pattern, expected: &Ty<ForallType>) 
 
 impl MonoType {
     /// Prunes away all the unification variables from a type.
-    fn _prune(self) -> Self {
+    fn prune(self) -> Self {
         match self {
             MonoType::Primitive(primitive) => MonoType::Primitive(primitive),
 
             MonoType::Function(ty) => MonoType::Function(ty.map(|deref!(fun)| {
                 Box::new(FunctionType {
-                    param: fun.param._prune(),
-                    ret: fun.ret._prune(),
+                    param: fun.param.prune(),
+                    ret: fun.ret.prune(),
                 })
             })),
 
             MonoType::Var(var) => MonoType::Var(var),
 
             MonoType::Meta(var) => match var.get_sub() {
-                Some(ty) => ty.clone()._prune(),
+                Some(ty) => ty.clone().prune(),
                 None => panic!("cannot prune unsubstituted unification variable {var:?}"),
             },
 
@@ -848,10 +848,10 @@ impl PolyType {
     fn prune(self) -> Self {
         match self {
             PolyType::Forall(ty) => PolyType::Forall(ty.map(|forall| ForallType {
-                generalized: forall.generalized._prune(),
+                generalized: forall.generalized.prune(),
                 vars: forall.vars,
             })),
-            PolyType::Type(ty) => PolyType::Type(ty._prune()),
+            PolyType::Type(ty) => PolyType::Type(ty.prune()),
         }
     }
 }
