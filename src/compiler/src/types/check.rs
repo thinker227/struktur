@@ -319,8 +319,32 @@ fn unify(a: &MonoType, b: &MonoType, level: u32) {
 fn generalize(
     ctx: &Context,
     provenance: Provenance,
-    mut ty: MonoType,
+    ty: MonoType,
 ) -> Result<Ty<ForallType>, MonoType> {
+    // Note: Instead of directly substituting unsolved unification variables using `MetaVar::sub`,
+    // we instead sustitute them by replacing the variables entirely within the type.
+    // This is because a single unsolved type variable may occur in multiple separate bindings,
+    // in which case generalizations need to be generated for each of them independently.
+    // If we substituted the variable using `MetaVar::sub` we could end up with a situation in which
+    // a type variable originating from a generalization of one binding shows up in the type of
+    // another binding, "leaking" the type variable into the other binding and ending up with a
+    // completely non-sensical type.
+    //
+    // As an example:
+    //   let x = fun () -> y ()
+    //   let y = fun () -> x ()
+    //
+    // If we substituted with `MetaVar::sub`, the above code would end up with the following types:
+    //   x : forall 'a. () -> 'a
+    //   y : () -> 'a
+    //
+    // `'a` "leaked" out of `x` and into `y` instead of `y` being generalized properly.
+    // The correct types we end up with if we instead substitute through replacement are:
+    //   x : forall 'a. () -> 'a
+    //   y : forall 'a. () -> 'a
+    //
+    // (noting that `'a` is now bound by a generalization in both bindings instead of just `x`)
+
     fn visit(
         ctx: &Context,
         provenance: &Provenance,
