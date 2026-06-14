@@ -63,7 +63,7 @@ impl TextSpan {
         self.length == 0
     }
 
-    /// Attaches a [TextContext] as context to the span.
+    /// Attaches a [SourceContext] as context to the span.
     pub fn with_context(self, context: SourceContext) -> TextLocation {
         TextLocation {
             span: self,
