@@ -18,6 +18,7 @@ use struktur::{
         nodes::{Item, Root},
         parse::parse,
     },
+    types::{pretty_print::pretty_print, type_check},
 };
 
 use crate::{
@@ -114,8 +115,10 @@ fn execute(args: &Args, logger: &Logger) -> anyhow::Result<ExitCode> {
 
     match result {
         Ok(_) => Ok(ExitCode::SUCCESS),
-        Err(Error::Diagnostic(diagnostic)) => {
-            diagnostic.report().eprint(&sources)?;
+        Err(Error::Diagnostics(diagnostics)) => {
+            for diagnostic in diagnostics {
+                diagnostic.report().eprint(&sources)?;
+            }
             Ok(ExitCode::FAILURE)
         }
         Err(Error::Other(other)) => Err(other),
@@ -136,7 +139,7 @@ fn compile(
     ctx: SourceContext,
     _no_run: bool,
     print_ast: bool,
-    _print_types: bool,
+    print_types: bool,
     _print_cps: bool,
     logger: &Logger,
 ) -> Result<(), Error> {
@@ -181,10 +184,28 @@ fn compile(
     let root = Root::new(root).unwrap();
     resolve_symbols(&mut symbols, sources, root)?;
 
-    let bindings = root.items().map(|item| match item {
-        Item::Binding(binding) => binding,
-    });
-    let _ref_graph = build_ref_graph(&symbols, bindings)?;
+    let bindings = root
+        .items()
+        .map(|item| match item {
+            Item::Binding(binding) => binding,
+        })
+        .collect::<Vec<_>>();
+
+    let _ref_graph = build_ref_graph(&symbols, bindings.iter().copied())?;
+
+    let (types, type_diagnostics) = type_check(&[root], &symbols);
+    if !type_diagnostics.is_empty() {
+        return Err(Error::from(type_diagnostics));
+    }
+
+    if print_types {
+        for binding in bindings.iter().copied() {
+            let symbol = symbols.bound(binding).unwrap();
+            let ty = types.get(symbol.key()).unwrap();
+            let [display] = pretty_print([ty], &symbols);
+            println!("{} : {}", symbol.name(), display);
+        }
+    }
 
     Ok(())
 }

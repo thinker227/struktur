@@ -1,7 +1,7 @@
 use struktur::diagnostic::Diagnostic;
 
 pub enum Error {
-    Diagnostic(Diagnostic),
+    Diagnostics(Vec<Diagnostic>),
     Other(anyhow::Error),
 }
 
@@ -13,7 +13,13 @@ impl Error {
 
 impl From<Diagnostic> for Error {
     fn from(value: Diagnostic) -> Self {
-        Self::Diagnostic(value)
+        Self::Diagnostics(vec![value])
+    }
+}
+
+impl From<Vec<Diagnostic>> for Error {
+    fn from(value: Vec<Diagnostic>) -> Self {
+        Self::Diagnostics(value)
     }
 }
 

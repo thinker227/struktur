@@ -99,6 +99,7 @@ impl PrettyPrint for PolyType {
             PolyType::Forall(Ty { ty: forall, .. }) => {
                 write!(buf, "forall")?;
                 for var in &forall.vars {
+                    write!(buf, " ")?;
                     var.print(buf, ctx)?;
                 }
                 write!(buf, ". ")?;
