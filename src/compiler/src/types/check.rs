@@ -361,7 +361,9 @@ fn generalize(
             MonoType::Meta(var) => match var.get_sub() {
                 Some(sub) => visit(ctx, provenance, vars, subs, sub),
 
-                None if ctx.forall_level() < var.level() => {
+                None if !subs.contains_key(&SubTarget::Meta(var.clone()))
+                    && ctx.forall_level() < var.level() =>
+                {
                     let inferred_var = ctx.fresh_inferred_var();
                     let sub = MonoType::Var(Ty {
                         ty: inferred_var,
