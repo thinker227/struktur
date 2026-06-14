@@ -2,6 +2,7 @@
 #![warn(clippy::todo)]
 
 pub mod diagnostic;
+pub mod patterns;
 pub mod sources;
 pub mod symbols;
 pub mod syntax;
