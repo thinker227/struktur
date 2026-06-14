@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg width="103.79988mm" height="70.767258mm" viewBox="0 0 103.79988 70.767257" version="1.1"
+   xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+   <defs>
+      <linearGradient id="gradient" x1="0" y1="0" x2="103.79986" y2="0" gradientUnits="userSpaceOnUse">
+         <stop style="stop-color:#73ffe8;stop-opacity:1;" offset="0" />
+         <stop style="stop-color:#e030df;stop-opacity:1;" offset="1" />
+      </linearGradient>
+   </defs>
+   <path style="display:inline;fill:url(#gradient)"
+      d="M 0,0 6.2373454,16.155086 H 39.252384 l 4.293278,11.150741 H 10.549744 l 6.247164,16.155086 h 32.96853 l 4.293278,11.151257 h -32.94941 l 6.24768,16.155087 h 32.921505 0.120923 16.033647 0.120923 L 103.79987,0 H 87.645296 L 80.020439,19.804476 H 56.812036 L 49.187695,0.00155029 V 0 h -5.16e-4 -16.15457 z m 62.588428,34.807694 h 11.655619 l -5.828068,15.137061 z" />
+</svg>

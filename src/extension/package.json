@@ -22,8 +22,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "dark": "../../logo.svg",
-          "light": "../../logo.svg"
+          "dark": "logo.svg",
+          "light": "logo.svg"
         }
       }
     ],
