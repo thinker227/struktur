@@ -1,0 +1,38 @@
+---
+source: src/compiler/src/types/check.rs
+expression: "types.get(\"a\").unwrap()"
+---
+Forall:
+  ty:
+    vars:
+      - Inferred: 1
+    generalized:
+      Function:
+        ty:
+          param:
+            Primitive:
+              ty: Unit
+              provenance:
+                Literal:
+                  idx: 15
+                  version: 1
+          ret:
+            Var:
+              ty:
+                Inferred: 1
+              provenance:
+                InferredVar:
+                  forall:
+                    GeneralizeLet:
+                      idx: 10
+                      version: 1
+        provenance:
+          Application:
+            idx: 16
+            version: 1
+  provenance:
+    Generalize:
+      forall:
+        GeneralizeLet:
+          idx: 10
+          version: 1

@@ -10,6 +10,11 @@
 //! Most notably, Algorithm-J uses mutable unification variables instead of a substitution map,
 //! so [MetaVar] is implemented using interior mutability.
 
+#![allow(
+    clippy::mutable_key_type,
+    reason = "This is for `SubTarget`, which contains `MetaVar`, which contains interior mutability. However, the `Hash` impl for `MetaVar` doesn't depend on the interior mutable state, so it's fine."
+)]
+
 use std::collections::{HashMap, HashSet};
 
 use crate::{
@@ -33,11 +38,18 @@ mod error;
 |  Type substitution/instantiation  |
 \*---------------------------------*/
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum SubTarget {
+    Var(TypeVar),
+    Meta(MetaVar),
+}
+
 impl MonoType {
     /// Substitutes type variables within the type for other types.
-    pub fn substitute(&self, subs: &HashMap<TypeVar, MonoType>) -> Self {
+    fn substitute(&self, subs: &HashMap<SubTarget, MonoType>) -> Self {
         match self {
             MonoType::Primitive(prim) => prim.clone().into(),
+
             MonoType::Function(Ty {
                 ty: fun,
                 provenance,
@@ -45,21 +57,27 @@ impl MonoType {
                 ty: Box::new(fun.substitute(subs)),
                 provenance: provenance.clone(),
             }),
-            MonoType::Var(var) => match subs.get(&var.ty) {
+
+            MonoType::Var(var) => match subs.get(&SubTarget::Var(var.ty)) {
                 Some(t) => t.clone(),
                 None => var.clone().into(),
             },
+
             MonoType::Meta(meta) => match meta.get_sub() {
-                Some(sub) => sub.clone(),
-                None => meta.clone().into(),
+                Some(sub) => sub.substitute(subs),
+                None => match subs.get(&SubTarget::Meta(meta.clone())) {
+                    Some(sub) => sub.substitute(subs),
+                    None => meta.clone().into(),
+                },
             },
+
             MonoType::Hole => MonoType::Hole,
         }
     }
 }
 
 impl FunctionType {
-    pub fn substitute(&self, subs: &HashMap<TypeVar, MonoType>) -> Self {
+    fn substitute(&self, subs: &HashMap<SubTarget, MonoType>) -> Self {
         Self {
             param: self.param.clone().substitute(subs),
             ret: self.ret.clone().substitute(subs),
@@ -68,11 +86,18 @@ impl FunctionType {
 }
 
 impl ForallType {
-    pub fn instantiate(&self, ctx: &Context) -> MonoType {
+    fn substitute(&self, subs: &HashMap<SubTarget, MonoType>) -> Self {
+        Self {
+            vars: self.vars.clone(),
+            generalized: self.generalized.substitute(subs),
+        }
+    }
+
+    fn instantiate(&self, ctx: &Context) -> MonoType {
         let subs = self
             .vars
             .iter()
-            .map(|var| (*var, MonoType::Meta(ctx.fresh_meta())))
+            .map(|var| (SubTarget::Var(*var), MonoType::Meta(ctx.fresh_meta())))
             .collect::<HashMap<_, _>>();
 
         self.generalized.clone().substitute(&subs)
@@ -301,27 +326,34 @@ fn unify(a: &MonoType, b: &MonoType, level: u32) {
 fn generalize(
     ctx: &Context,
     provenance: Provenance,
-    ty: MonoType,
+    mut ty: MonoType,
 ) -> Result<Ty<ForallType>, MonoType> {
-    fn visit(ctx: &Context, provenance: &Provenance, vars: &mut Vec<TypeVar>, ty: &MonoType) {
+    fn visit(
+        ctx: &Context,
+        provenance: &Provenance,
+        vars: &mut Vec<TypeVar>,
+        subs: &mut HashMap<SubTarget, MonoType>,
+        ty: &MonoType,
+    ) {
         match ty {
             MonoType::Function(Ty { ty: fun, .. }) => {
-                visit(ctx, provenance, vars, &fun.param);
-                visit(ctx, provenance, vars, &fun.ret);
+                visit(ctx, provenance, vars, subs, &fun.param);
+                visit(ctx, provenance, vars, subs, &fun.ret);
             }
 
             MonoType::Meta(var) => match var.get_sub() {
-                Some(sub) => visit(ctx, provenance, vars, sub),
+                Some(sub) => visit(ctx, provenance, vars, subs, sub),
 
                 None if ctx.forall_level() < var.level() => {
                     let inferred_var = ctx.fresh_inferred_var();
-                    var.sub(MonoType::Var(Ty {
+                    let sub = MonoType::Var(Ty {
                         ty: inferred_var,
                         provenance: Provenance::InferredVar {
                             forall: Box::new(provenance.clone()),
                         },
-                    }));
+                    });
                     vars.push(inferred_var);
+                    subs.insert(SubTarget::Meta(var.clone()), sub);
                 }
 
                 None => {}
@@ -332,15 +364,18 @@ fn generalize(
     }
 
     let mut vars = Vec::new();
-    visit(ctx, &provenance, &mut vars, &ty);
+    let mut subs = HashMap::new();
+    visit(ctx, &provenance, &mut vars, &mut subs, &ty);
 
     if vars.is_empty() {
         Err(ty)
     } else {
+        let substitued = ty.substitute(&subs);
+
         Ok(Ty {
             ty: ForallType {
                 vars,
-                generalized: ty,
+                generalized: substitued,
             },
             provenance: Provenance::Generalize {
                 forall: Box::new(provenance),
