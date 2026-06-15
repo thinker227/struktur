@@ -1,0 +1,7 @@
+---
+source: src/compiler/src/patterns.rs
+expression: test_pattern_compile(text)
+---
+Success:
+  bindings: []
+  action: 0

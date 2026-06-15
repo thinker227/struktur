@@ -389,3 +389,65 @@ pub fn compile_pattern<'map>(
 
     compile_clauses(clauses)
 }
+
+#[cfg(test)]
+mod tests {
+    use insta::assert_yaml_snapshot;
+
+    use crate::{
+        select_nodes,
+        symbols::resolve_symbols,
+        syntax::{Nodes, parse::test_parse},
+    };
+
+    use super::*;
+
+    fn test_pattern_compile(text: &str) -> Decision {
+        let mut nodes = Nodes::new();
+        let mut symbols = Symbols::new();
+
+        let (sources, root, _) = test_parse(&mut nodes, text).unwrap();
+        resolve_symbols(&mut symbols, &sources, root).unwrap();
+
+        let patterns = select_nodes!(root => (nodes::LetExpr) > nodes::Pattern)
+            .chain(select_nodes!(root => (nodes::Case) > nodes::Pattern));
+
+        compile_pattern(patterns, &sources, &symbols)
+    }
+
+    #[test]
+    fn wildcard() {
+        let text = "let f = fun _ -> ()";
+
+        assert_yaml_snapshot!(test_pattern_compile(text));
+    }
+
+    #[test]
+    fn variable() {
+        let text = "let f = fun x -> x";
+
+        assert_yaml_snapshot!(test_pattern_compile(text));
+    }
+
+    #[test]
+    fn nums() {
+        let text = "
+            let even = fun 0 -> true
+                         | 1 -> false
+                         | x -> even x
+        ";
+
+        assert_yaml_snapshot!(test_pattern_compile(text));
+    }
+
+    #[test]
+    fn unreachable_case() {
+        let text = r#"
+            let f = fun true -> 0
+                      | _ -> 1
+                      | false -> 2
+        "#;
+
+        assert_yaml_snapshot!(test_pattern_compile(text));
+    }
+}

@@ -1,0 +1,24 @@
+---
+source: src/compiler/src/patterns.rs
+expression: test_pattern_compile(text)
+---
+Match:
+  target: []
+  cases:
+    - constructor:
+        Number: 0
+      branch:
+        Success:
+          bindings: []
+          action: 0
+  fallback:
+    Match:
+      target: []
+      cases:
+        - constructor:
+            Number: 1
+          branch:
+            Success:
+              bindings: []
+              action: 1
+      fallback: Failure
