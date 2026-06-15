@@ -5,6 +5,8 @@
 //! and [Yorick Peterse's implementation](https://github.com/yorickpeterse/pattern-matching-in-rust/blob/main/jacobs2021/src/lib.rs)
 //! of it.
 
+use std::collections::HashMap;
+
 use serde::{Serialize, ser::SerializeSeq as _};
 
 use crate::{
@@ -84,7 +86,7 @@ impl Serialize for Target {
 }
 
 /// A data constructor.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type")]
 pub enum Constructor {
     /// Constructor of a boolean (true or false).
@@ -180,9 +182,9 @@ pub struct DecisionTree<T> {
 struct Clause {
     /// The patterns matched by the clause and the targets thereof,
     /// aka. the columns in the row.
-    _patterns: Vec<(Target, Pattern)>,
+    patterns: Vec<(Target, Pattern)>,
     /// The body of the clause.
-    _body: Body,
+    body: Body,
 }
 
 /// A not yet compiled match against a data constructor,
@@ -190,9 +192,9 @@ struct Clause {
 #[derive(Debug, Clone)]
 struct Pattern {
     /// The constructor matched against.
-    _constructor: Constructor,
+    constructor: Constructor,
     /// The patterns matched against the constructor arguments.
-    _arguments: Vec<Pattern>,
+    arguments: Vec<Pattern>,
 }
 
 /// A context for compiling patterns.
@@ -221,14 +223,14 @@ fn generate_clause(ctx: &Context, pattern: nodes::Pattern, action: usize) -> Cla
             Some((
                 Target::empty(),
                 Pattern {
-                    _constructor: Constructor::Number(
+                    constructor: Constructor::Number(
                         ctx.sources
                             .lookup(number.location())
                             .unwrap()
                             .parse::<u64>()
                             .expect("unexpected number literal text"),
                     ),
-                    _arguments: vec![],
+                    arguments: vec![],
                 },
             )),
             None,
@@ -238,14 +240,14 @@ fn generate_clause(ctx: &Context, pattern: nodes::Pattern, action: usize) -> Cla
             Some((
                 Target::empty(),
                 Pattern {
-                    _constructor: Constructor::Bool(
+                    constructor: Constructor::Bool(
                         ctx.sources
                             .lookup(bool.location())
                             .unwrap()
                             .parse::<bool>()
                             .expect("unexpected bool literal text"),
                     ),
-                    _arguments: vec![],
+                    arguments: vec![],
                 },
             )),
             None,
@@ -261,30 +263,117 @@ fn generate_clause(ctx: &Context, pattern: nodes::Pattern, action: usize) -> Cla
     };
 
     Clause {
-        _body: Body {
+        body: Body {
             bindings: binding.into_iter().collect(),
             action,
         },
-        _patterns: pattern.into_iter().collect(),
+        patterns: pattern.into_iter().collect(),
     }
 }
 
-/// Decides which target and pattern to branch on from a list of clauses.
-fn _branch(_clauses: &[Clause]) -> &(Target, Pattern) {
-    todo!()
+/// Decides which target and pattern to branch on in the first clause of a list of clauses.
+///
+/// This is based on which target occurs in the most clauses.
+fn branch(clauses: &[Clause]) -> &(Target, Pattern) {
+    let mut counts = HashMap::new();
+
+    for clause in clauses {
+        for (target, _) in &clause.patterns {
+            let entry = counts.entry(target).or_insert(0_usize);
+            *entry += 1;
+        }
+    }
+
+    clauses[0]
+        .patterns
+        .iter()
+        .max_by_key(|(target, _)| counts[target])
+        .unwrap()
 }
 
 /// Expands a clause `a is C(P1, ..., Pn), ...REST` into `a1 is P1, ..., an is Pn, ...REST`,
 /// with `a1, ..., an` being sub-targets of the passed-in target for each argument index in the constructor `C`.
 ///
 /// If no pattern within the clause matches on the target, the original clause is returned unchanged.
-fn _expand(_clause: Clause, _target: &Target) -> Clause {
-    todo!()
+fn expand(mut clause: Clause, target: &Target) -> Clause {
+    // Find the index of the target in the clause.
+    let index = clause
+        .patterns
+        .iter()
+        .enumerate()
+        .find(|(_, (t, _))| t == target)
+        .map(|(index, _)| index);
+
+    if let Some(index) = index {
+        // Remove the original clause (since that's the one we're expanding).
+        let (_, pattern) = clause.patterns.remove(index);
+
+        // Push a new clause for each argument, with the argument position appended to the target path.
+        for (index, arg) in pattern.arguments.into_iter().enumerate() {
+            clause.patterns.push((target.append(index), arg));
+        }
+    }
+
+    clause
 }
 
 /// Compiles a set of clauses into a decision tree.
-fn compile_clauses(_clauses: &[Clause]) -> Decision {
-    todo!()
+fn compile_clauses(clauses: Vec<Clause>) -> Decision {
+    // If there are no clauses, then we've reached a failure state.
+    if clauses.is_empty() {
+        return Decision::Failure;
+    }
+
+    // If the first clause is completely empty, then it has nothing to match on and is exhaustive and a success.
+    if clauses.first().unwrap().patterns.is_empty() {
+        let first = clauses.into_iter().next().unwrap();
+        return Decision::Success(first.body);
+    }
+
+    // Get what target and pattern to branch on in the first clause.
+    let (branch_target, branch_pattern) = branch(&clauses).clone();
+
+    let mut a = Vec::new();
+    let mut b = Vec::new();
+
+    for clause in clauses {
+        // Check if the clause contains any test for the branch target.
+        let overlap = clause
+            .patterns
+            .iter()
+            .find(|(target, _)| *target == branch_target);
+
+        if let Some((_, pattern)) = overlap {
+            if pattern.constructor == branch_pattern.constructor {
+                // If the clause contains a test for the branch target and pattern,
+                // add the expanded clause to `a`.
+                a.push(expand(clause, &branch_target));
+            } else {
+                // If the clause contains a test for the branch target but not the branch pattern,
+                // add the unchanged clause to `b`.
+                b.push(clause);
+            }
+        } else {
+            // If the clause contains no test for the branch target,
+            // add the clause unchanged to both `a` and `b`.
+            a.push(clause.clone());
+            b.push(clause);
+        }
+    }
+
+    // Recursively generate decision nodes for `a` and `b`.
+    let a = compile_clauses(a);
+    let b = compile_clauses(b);
+
+    // Finally, put the generated decisions into a match on the branch target.
+    Decision::Match {
+        target: branch_target,
+        cases: vec![Case {
+            constructor: branch_pattern.constructor,
+            branch: a,
+        }],
+        fallback: Box::new(b),
+    }
 }
 
 /// Compiles a set of patterns into a decision tree.
@@ -300,5 +389,5 @@ pub fn compile_pattern<'map>(
         .map(|(index, pattern)| generate_clause(&ctx, pattern, index))
         .collect::<Vec<_>>();
 
-    compile_clauses(&clauses)
+    compile_clauses(clauses)
 }
