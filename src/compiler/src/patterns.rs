@@ -87,7 +87,6 @@ impl Serialize for Target {
 
 /// A data constructor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "type")]
 pub enum Constructor {
     /// Constructor of a boolean (true or false).
     Bool(bool),
@@ -141,7 +140,6 @@ pub struct Case {
 
 /// A node in a compiled decision tree of a pattern.
 #[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
 pub enum Decision {
     /// A successful match.
     Success(Body),
