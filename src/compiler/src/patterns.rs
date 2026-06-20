@@ -374,7 +374,7 @@ fn compile_clauses(clauses: Vec<Clause>) -> Decision {
         // If `b` shares the same target as the current node,
         // then we can 'lift' its cases and fallback onto the current node.
         // This prevents having a decision tree with several layers
-        // of fallback nodes which all match on the same target.
+        //  of fallback nodes which all match on the same target.
         Decision::Match {
             target: b_target,
             mut cases,
