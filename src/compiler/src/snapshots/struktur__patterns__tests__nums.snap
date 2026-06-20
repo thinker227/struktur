@@ -21,4 +21,11 @@ Match:
             Success:
               bindings: []
               action: 1
-      fallback: Failure
+      fallback:
+        Success:
+          bindings:
+            - variable:
+                idx: 2
+                version: 1
+              value: []
+          action: 2
