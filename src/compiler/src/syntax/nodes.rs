@@ -265,7 +265,7 @@ impl<'map> LetExpr<'map> {
     }
 }
 
-// 'fun' ('|'? Case) ('|' Case)*
+// 'fun' '|'? Case ('|' Case)*
 node!(LambdaExpr, SyntaxKind::LambdaExpr);
 
 impl<'map> LambdaExpr<'map> {
@@ -273,18 +273,24 @@ impl<'map> LambdaExpr<'map> {
         *self.0.token(0).unwrap()
     }
 
+    pub fn has_leading_bar(self) -> bool {
+        // If there's no leading bar, then the amount of tokens is be equal to the amount of nodes.
+        // Otherwise, there's a leading bar.
+        self.0.token_count() > self.0.node_count()
+    }
+
     pub fn leading_bar(self) -> Option<Token> {
-        self.0.node(0).unwrap().token(0).copied()
+        // 0 is the 'fun' token, 1 is the leading bar.
+        self.has_leading_bar().then(|| *self.0.token(1).unwrap())
     }
 
     pub fn bars(self) -> impl Iterator<Item = Token> + Clone {
-        self.0.nodes().filter_map(|x| x.token(0).copied())
+        // Skip leading 'fun' token.
+        self.0.tokens().skip(1).copied()
     }
 
     pub fn cases(self) -> impl Iterator<Item = Case<'map>> + Clone {
-        self.0
-            .nodes()
-            .map(|x| Case::new(x.node(0).unwrap()).unwrap())
+        self.0.nodes().map(|x| Case::new(x).unwrap())
     }
 }
 
@@ -556,7 +562,7 @@ impl<'map> FunctionTyExpr<'map> {
     }
 }
 
-// 'forall' (VarTyExpr*) '.' TyExpr
+// 'forall' VarTyExpr* '.' TyExpr
 node!(ForallTyExpr, SyntaxKind::ForallTyExpr);
 
 impl<'map> ForallTyExpr<'map> {
@@ -564,11 +570,14 @@ impl<'map> ForallTyExpr<'map> {
         *self.0.token(0).unwrap()
     }
 
+    pub fn vars_count(self) -> usize {
+        self.0.node_count() - 1
+    }
+
     pub fn vars(self) -> impl Iterator<Item = VarTyExpr<'map>> + Clone {
         self.0
-            .node(0)
-            .unwrap()
             .nodes()
+            .take(self.vars_count())
             .map(|x| VarTyExpr::new(x).unwrap())
     }
 
@@ -577,7 +586,7 @@ impl<'map> ForallTyExpr<'map> {
     }
 
     pub fn subty(self) -> TyExpr<'map> {
-        TyExpr::new(self.0.node(1).unwrap()).unwrap()
+        TyExpr::new(self.0.node(self.vars_count()).unwrap()).unwrap()
     }
 }
 

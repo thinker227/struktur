@@ -147,8 +147,6 @@ pub enum SyntaxKind {
     LetExpr,
     /// Lambda expressions.
     LambdaExpr,
-    /// Structural node inside [Self::LambdaExpr].
-    LambdaExprStructuring,
     /// Application expressions.
     ApplicationExpr,
     /// If-else expressions.
@@ -193,8 +191,6 @@ pub enum SyntaxKind {
     FunctionTyExpr,
     /// Forall type expressions.
     ForallTyExpr,
-    /// Structural node inside [Self::ForallTyExpr].
-    ForallTyExprStructuring,
     /// Syntactic grouping type expressions.
     GroupingTyExpr,
 }

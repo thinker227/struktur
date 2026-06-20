@@ -460,31 +460,28 @@ impl Parser<'_> {
     fn parse_lambda_expr(&mut self) -> Result {
         let fun = self.expect(TokenKind::Fun)?;
 
+        let leading_bar = self.tokens.expect_optional(TokenKind::Bar);
+        let leading_case = self.parse_case()?;
+
         let mut cases = Vec::new();
-
-        {
-            let bar = self.tokens.expect_optional(TokenKind::Bar);
-            let case = self.parse_case()?;
-
-            cases.push(self.node(SyntaxKind::LambdaExprStructuring, |b| {
-                b.try_add_token(bar);
-                b.add_node(case);
-            }));
-        }
 
         while self.tokens.current().kind == TokenKind::Bar {
             let bar = self.tokens.advance();
             let case = self.parse_case()?;
 
-            cases.push(self.node(SyntaxKind::LambdaExprStructuring, |b| {
-                b.add_token(bar);
-                b.add_node(case);
-            }));
+            cases.push((bar, case));
         }
 
         Ok(self.node(SyntaxKind::LambdaExpr, |b| {
             b.add_token(fun);
-            b.add_nodes(cases);
+
+            b.try_add_token(leading_bar);
+            b.add_node(leading_case);
+
+            for (bar, case) in cases {
+                b.add_token(bar);
+                b.add_node(case);
+            }
         }))
     }
 
@@ -717,13 +714,9 @@ impl Parser<'_> {
 
         let subty = self.parse_tyexpr()?;
 
-        let structuring = self.node(SyntaxKind::ForallTyExprStructuring, |b| {
-            b.add_nodes(vars);
-        });
-
         Ok(self.node(SyntaxKind::ForallTyExpr, |b| {
             b.add_token(forall);
-            b.add_node(structuring);
+            b.add_nodes(vars);
             b.add_token(dot);
             b.add_node(subty);
         }))
