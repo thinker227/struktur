@@ -1,4 +1,4 @@
-#![feature(deref_patterns)]
+#![feature(deref_patterns, gen_blocks)]
 #![warn(clippy::todo)]
 
 pub mod diagnostic;

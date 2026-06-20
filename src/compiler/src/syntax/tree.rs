@@ -249,20 +249,34 @@ impl<'map, Kind, Token> SyntaxNode<'map, Kind, Token> {
     /// returned from the iterator, but its descendants will not.
     ///
     /// Use [all_descendants](Self::all_descendants) if filtering is not necessary.
-    pub fn descendants<F: FnMut(Self) -> ControlFlow<()>>(
-        self,
-        f: F,
-    ) -> DescendantsIter<'map, Kind, Token, F> {
-        DescendantsIter {
-            f,
-            current: self,
-            index: 0,
-            stack: Vec::new(),
+    pub gen fn descendants<F: FnMut(Self) -> ControlFlow<()>>(self, mut descend: F) -> Self {
+        let mut walking = self;
+        let mut index = 0;
+        let mut stack = Vec::new();
+
+        loop {
+            if let Some(next) = walking.node(index) {
+                yield next;
+                index += 1;
+
+                if let ControlFlow::Continue(()) = descend(next) {
+                    stack.push((walking, index));
+                    walking = next;
+                    index = 0;
+                }
+            } else {
+                if let Some((ancestor, ancestor_index)) = stack.pop() {
+                    walking = ancestor;
+                    index = ancestor_index;
+                } else {
+                    break;
+                }
+            }
         }
     }
 
     /// Gets the descendant nodes of the node without any filtering.
-    pub fn all_descendants(self) -> impl Iterator<Item = Self> + Clone {
+    pub fn all_descendants(self) -> impl Iterator<Item = Self> {
         self.descendants(|_| ControlFlow::Continue(()))
     }
 }
@@ -460,60 +474,6 @@ impl<'map, Kind, Token> Iterator for ChildrenIter<'map, Kind, Token> {
         }
 
         None
-    }
-}
-
-pub struct DescendantsIter<'map, Kind, Token, F> {
-    f: F,
-    current: SyntaxNode<'map, Kind, Token>,
-    index: usize,
-    stack: Vec<(SyntaxNode<'map, Kind, Token>, usize)>,
-}
-
-impl<'map, Kind, Token, F> Iterator for DescendantsIter<'map, Kind, Token, F>
-where
-    F: FnMut(SyntaxNode<'map, Kind, Token>) -> ControlFlow<()>,
-{
-    type Item = SyntaxNode<'map, Kind, Token>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let node = if let Some(node) = self.current.node(self.index) {
-            self.index += 1;
-            node
-        } else {
-            'a: {
-                while let Some((node, index)) = self.stack.pop() {
-                    if let Some(next) = node.node(index) {
-                        self.index = index;
-                        break 'a next;
-                    }
-                }
-
-                return None;
-            }
-        };
-
-        match (self.f)(node) {
-            ControlFlow::Continue(()) => {
-                self.stack.push((self.current, self.index));
-                self.current = node;
-                self.index = 0;
-            }
-            ControlFlow::Break(()) => {}
-        }
-
-        Some(node)
-    }
-}
-
-impl<Kind, Token, F: Clone> Clone for DescendantsIter<'_, Kind, Token, F> {
-    fn clone(&self) -> Self {
-        Self {
-            f: self.f.clone(),
-            current: self.current,
-            index: self.index,
-            stack: self.stack.clone(),
-        }
     }
 }
 
