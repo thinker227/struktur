@@ -9,7 +9,7 @@
   "explorer.fileNesting.patterns": {
     "Cargo.toml": "Cargo.lock,rust-toolchain*",
     "package.json": "language-configuration.json",
-    "*.strukt": "${capture}.js"
+    "*.strukt": "${capture}.js,${capture}.ast.yml,${capture}.cps.yml"
   },
 
   "files.associations": {
