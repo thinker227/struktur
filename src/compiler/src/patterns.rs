@@ -450,4 +450,13 @@ mod tests {
 
         assert_yaml_snapshot!(test_pattern_compile(text));
     }
+
+    #[test]
+    fn non_exhaustive() {
+        let text = "
+            let f = fun true -> 0
+        ";
+
+        assert_yaml_snapshot!(test_pattern_compile(text));
+    }
 }
