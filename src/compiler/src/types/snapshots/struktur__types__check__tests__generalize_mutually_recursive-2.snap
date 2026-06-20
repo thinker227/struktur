@@ -14,7 +14,7 @@ Forall:
               ty: Unit
               provenance:
                 LiteralPattern:
-                  idx: 12
+                  idx: 11
                   version: 1
           ret:
             Var:
@@ -24,15 +24,15 @@ Forall:
                 InferredVar:
                   forall:
                     GeneralizeLet:
-                      idx: 20
+                      idx: 18
                       version: 1
         provenance:
           Lambda:
-            idx: 19
+            idx: 17
             version: 1
   provenance:
     Generalize:
       forall:
         GeneralizeLet:
-          idx: 20
+          idx: 18
           version: 1
