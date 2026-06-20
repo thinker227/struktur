@@ -331,6 +331,8 @@ fn compile_clauses(clauses: Vec<Clause>) -> Decision {
     // Get what target and pattern to branch on in the first clause.
     let (branch_target, branch_pattern) = branch(&clauses).clone();
 
+    // `a` here is the clauses for the case we're building up.
+    // `b` is the clauses for the 'fallback' case.
     let mut a = Vec::new();
     let mut b = Vec::new();
 
@@ -363,14 +365,33 @@ fn compile_clauses(clauses: Vec<Clause>) -> Decision {
     let a = compile_clauses(a);
     let b = compile_clauses(b);
 
-    // Finally, put the generated decisions into a match on the branch target.
+    let case = Case {
+        constructor: branch_pattern.constructor,
+        branch: a,
+    };
+
+    let (cases, fallback) = match b {
+        // If `b` shares the same target as the current node,
+        // then we can 'lift' its cases and fallback onto the current node.
+        // This prevents having a decision tree with several layers
+        // of fallback nodes which all match on the same target.
+        Decision::Match {
+            target: b_target,
+            mut cases,
+            fallback,
+        } if b_target == branch_target => {
+            cases.insert(0, case);
+            (cases, fallback)
+        }
+
+        // Otherwise, we just have a single case we're matching on.
+        b => (vec![case], Box::new(b)),
+    };
+
     Decision::Match {
         target: branch_target,
-        cases: vec![Case {
-            constructor: branch_pattern.constructor,
-            branch: a,
-        }],
-        fallback: Box::new(b),
+        cases,
+        fallback,
     }
 }
 

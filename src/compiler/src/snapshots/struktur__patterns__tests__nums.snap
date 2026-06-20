@@ -11,21 +11,17 @@ Match:
         Success:
           bindings: []
           action: 0
-  fallback:
-    Match:
-      target: []
-      cases:
-        - constructor:
-            Number: 1
-          branch:
-            Success:
-              bindings: []
-              action: 1
-      fallback:
+    - constructor:
+        Number: 1
+      branch:
         Success:
-          bindings:
-            - variable:
-                idx: 2
-                version: 1
-              value: []
-          action: 2
+          bindings: []
+          action: 1
+  fallback:
+    Success:
+      bindings:
+        - variable:
+            idx: 2
+            version: 1
+          value: []
+      action: 2
